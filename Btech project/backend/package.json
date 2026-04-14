@@ -1,0 +1,14 @@
+{
+  "name": "rtls-backend",
+  "version": "1.0.0",
+  "description": "Node.js WebSocket Hub for Emulated UWB RTLS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.1",
+    "socket.io": "^4.8.3"
+  }
+}
