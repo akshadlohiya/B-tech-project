@@ -1,0 +1,16 @@
+[Unit]
+Description=Raspberry Pi 4 RTLS Edge Server & Database
+After=network.target
+
+[Service]
+Type=simple
+User=akshad
+WorkingDirectory=/home/akshad/B-tech-project/backend
+ExecStart=/usr/bin/node /home/akshad/B-tech-project/backend/server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target

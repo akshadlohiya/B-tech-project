@@ -1,0 +1,17 @@
+[Unit]
+Description=Raspberry Pi 4 RTLS Wi-Fi Dynamic Distance Tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/B-tech-project/raspberry_pi
+ExecStart=/home/pi/B-tech-project/raspberry_pi/venv/bin/python3 /home/pi/B-tech-project/raspberry_pi/pi_wifi_tracker.py --server http://192.168.1.50:3000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

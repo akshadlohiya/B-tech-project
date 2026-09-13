@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+venv/
+env/
+.env
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# SQLite databases & runtime files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs & build artifacts
+logs/
+*.log
+dist/
+dist-ssr/
+build/
+
+# Editor directories
+.vscode/
+.idea/
+.DS_Store
+*.swp
