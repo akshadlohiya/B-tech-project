@@ -4,7 +4,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, Box, Grid, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import './index.css';
-const SOCKET_URL = 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || (typeof window !== 'undefined' && window.location.hostname ? `${window.location.protocol}//${window.location.hostname}:3000` : 'http://localhost:3000');
 const BASE_LAT = 43.8615;
 const BASE_LON = -78.9469;
 const gpsToLocal = (lat, lon, elev) => {
@@ -181,11 +181,61 @@ const UwbTag = ({ tag }) => {
 					<mesh position={[-0.6, 0, 0.6]} castShadow><boxGeometry args={[0.8, 0.05, 0.1]} rotation={[0, -Math.PI/4, 0]}/><meshStandardMaterial color="#94a3b8" /></mesh>
 				</group>
 			)}
+			{(tag.name?.includes('Raspberry') || tag.tagId === 'Tag_Pi' || tag.isPi || tag.wifi) && (
+				<group scale={1.0} position={[0, -0.15, 0]}>
+					{/* Raspberry Pi Green PCB Board */}
+					<mesh position={[0, 0, 0]} castShadow receiveShadow>
+						<boxGeometry args={[1.2, 0.1, 0.85]} />
+						<meshStandardMaterial color="#15803d" roughness={0.3} metalness={0.2} />
+					</mesh>
+					{/* SoC Chip */}
+					<mesh position={[-0.1, 0.08, 0]} castShadow>
+						<boxGeometry args={[0.35, 0.06, 0.35]} />
+						<meshStandardMaterial color="#94a3b8" metalness={0.9} roughness={0.2} />
+					</mesh>
+					{/* USB Ports */}
+					<mesh position={[0.5, 0.12, 0.2]} castShadow>
+						<boxGeometry args={[0.28, 0.18, 0.22]} />
+						<meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.3} />
+					</mesh>
+					<mesh position={[0.5, 0.12, -0.2]} castShadow>
+						<boxGeometry args={[0.28, 0.18, 0.22]} />
+						<meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.3} />
+					</mesh>
+					{/* GPIO Header */}
+					<mesh position={[-0.1, 0.08, -0.32]} castShadow>
+						<boxGeometry args={[0.8, 0.08, 0.1]} />
+						<meshStandardMaterial color="#1e293b" />
+					</mesh>
+					{/* Pulsing Wi-Fi Ring */}
+					<mesh position={[0, 0.08, 0]} rotation={[-Math.PI/2, 0, 0]}>
+						<ringGeometry args={[0.6, 0.75, 24]} />
+						<meshBasicMaterial color="#c026d3" transparent opacity={0.65} side={THREE.DoubleSide} />
+					</mesh>
+				</group>
+			)}
 			<Html distanceFactor={18} center position={[0, 1.6, 0]} className="r3f-html-label" zIndexRange={[100, 0]}>
-				<div style={{ background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(56, 189, 248, 0.5)', padding: '4px 10px', borderRadius: '6px', textAlign: 'center', whiteSpace: 'nowrap', color: 'white', fontSize: '13px', backdropFilter: 'blur(4px)' }}>
-					<strong>{tag.name}</strong>
+				<div style={{ 
+					background: tag.wifi ? 'rgba(88, 28, 135, 0.92)' : 'rgba(15, 23, 42, 0.85)', 
+					border: tag.wifi ? '1px solid #c026d3' : '1px solid rgba(56, 189, 248, 0.5)', 
+					padding: '4px 10px', 
+					borderRadius: '6px', 
+					textAlign: 'center', 
+					whiteSpace: 'nowrap', 
+					color: 'white', 
+					fontSize: '13px', 
+					backdropFilter: 'blur(4px)',
+					boxShadow: tag.wifi ? '0 0 12px rgba(192, 38, 211, 0.5)' : 'none'
+				}}>
+					<strong>{tag.wifi ? '🍓 ' + tag.name : tag.name}</strong>
 					<br/>
-					<span style={{ color: tag.battery < 20 ? '#ef4444' : '#10b981'}}>⚡ {tag.battery}%</span>
+					{tag.wifi ? (
+						<span style={{ color: '#f0abfc', fontSize: '11px', fontWeight: 'bold' }}>
+							📶 {tag.wifi.rssi || tag.wifi.rssi_dbm} dBm | 📏 {tag.wifi.distance_meters}m
+						</span>
+					) : (
+						<span style={{ color: tag.battery < 20 ? '#ef4444' : '#10b981'}}>⚡ {tag.battery}%</span>
+					)}
 				</div>
 			</Html>
 		</group>
@@ -287,7 +337,10 @@ function App() {
   const [tagCount, setTagCount] = useState(0);
   const [globalTags, setGlobalTags] = useState({});
   const [navTarget, setNavTarget] = useState("");
+  const [dbStats, setDbStats] = useState({ total_history_records: 0, db_status: 'INITIALIZING' });
+  const [recentAlert, setRecentAlert] = useState(null);
   const socketRef = useRef(null);
+
   useEffect(() => {
 	socketRef.current = io(SOCKET_URL);
 	socketRef.current.on('connect', () => setIsConnected(true));
@@ -302,10 +355,32 @@ function App() {
 		[tagData.tagId]: tagData
 	  }));
 	});
+	socketRef.current.on('system_alert', (alert) => {
+	  setRecentAlert(alert);
+	  setTimeout(() => setRecentAlert(null), 6000);
+	});
+
+	// Poll database analytics every 4 seconds
+	const fetchAnalytics = async () => {
+	  try {
+		const res = await fetch(`${SOCKET_URL}/api/analytics`);
+		if (res.ok) {
+		  const data = await res.json();
+		  setDbStats(data);
+		}
+	  } catch (e) {
+		// Server might not have responded yet
+	  }
+	};
+	fetchAnalytics();
+	const interval = setInterval(fetchAnalytics, 4000);
+
 	return () => {
+	  clearInterval(interval);
 	  if (socketRef.current) socketRef.current.disconnect();
 	};
   }, []);
+
   return (
 	<>
 	  <div className="hud-overlay" style={{ zIndex: 10 }}>
@@ -320,6 +395,12 @@ function App() {
 		  <span className="info-label">Active UWB Tags</span>
 		  <span className="info-value">{tagCount}</span>
 		</div>
+		<div className="info-row" style={{ marginTop: '6px' }}>
+		  <span className="info-label">SQLite Database</span>
+		  <span className="info-value" style={{ color: '#38bdf8', fontSize: '0.85rem' }}>
+			{dbStats.total_history_records ? `💾 ${dbStats.total_history_records} logs` : '💾 WAL Ready'}
+		  </span>
+		</div>
 		<div className="info-row" style={{ marginTop: '10px' }}>
 		  <span className="info-label">Navigator Target</span>
 		  <select 
@@ -331,6 +412,11 @@ function App() {
 			{Object.values(globalTags).map(t => <option key={t.tagId} value={t.tagId}>{t.name}</option>)}
 		  </select>
 		</div>
+		{recentAlert && (
+		  <div style={{ marginTop: '10px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', border: '1px solid #f87171', animation: 'pulse 1.5s infinite' }}>
+			⚠️ ALERT: [{recentAlert.tagId}] {recentAlert.message}
+		  </div>
+		)}
 		<p style={{fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '15px'}}>
 		  <strong>CONTROLS:</strong> Click the screen to interact. Use <kbd style={{background: '#334155', padding: '2px 4px', borderRadius: '4px'}}>W</kbd> <kbd style={{background: '#334155', padding: '2px 4px', borderRadius: '4px'}}>A</kbd> <kbd style={{background: '#334155', padding: '2px 4px', borderRadius: '4px'}}>S</kbd> <kbd style={{background: '#334155', padding: '2px 4px', borderRadius: '4px'}}>D</kbd> to drive the Mover Entity.
 		</p>
@@ -346,11 +432,29 @@ function App() {
 		  <div className="telemetry-tag-dist" style={{marginTop: '4px'}}><span style={{color: '#94a3b8'}}>Distance to Target:</span> <span id="mover-target-dist" style={{color: '#4ade80', fontWeight: 'bold', fontSize: '1.2rem'}}>--</span></div>
 		</div>
 		{Object.values(globalTags).map((tag) => (
-		  <div key={tag.tagId} className="telemetry-tag-card" style={{ border: navTarget === tag.tagId ? '1px solid #38bdf8' : 'none' }}>
+		  <div key={tag.tagId} className="telemetry-tag-card" style={{ 
+			border: navTarget === tag.tagId ? '2px solid #38bdf8' : (tag.wifi ? '1px solid #c026d3' : 'none'),
+			background: tag.wifi ? 'rgba(88, 28, 135, 0.25)' : undefined
+		  }}>
 			<div className="telemetry-tag-header">
-			  <span>{tag.name}</span>
-			  <span style={{fontSize: '0.8rem', color: tag.battery < 20 ? '#ef4444' : '#10b981'}}>⚡ {tag.battery}%</span>
+			  <span>{tag.wifi ? '🍓 ' + tag.name : tag.name}</span>
+			  {tag.wifi ? (
+				<span style={{fontSize: '0.75rem', background: '#9333ea', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold'}}>WI-FI RTLS</span>
+			  ) : (
+				<span style={{fontSize: '0.8rem', color: tag.battery < 20 ? '#ef4444' : '#10b981'}}>⚡ {tag.battery}%</span>
+			  )}
 			</div>
+			<div style={{ fontSize: '0.75rem', color: '#38bdf8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+			  <span>📍 Zone:</span>
+			  <span style={{ fontWeight: 'bold', color: '#7dd3fc' }}>{tag.zone || 'General Floor'}</span>
+			</div>
+			{tag.wifi && (
+			  <div style={{ margin: '6px 0', padding: '6px 8px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '6px', borderLeft: '3px solid #c026d3' }}>
+				<div className="telemetry-tag-dist" style={{ color: '#e9d5ff' }}><span>Live RSSI:</span><span style={{ fontWeight: 'bold', color: '#f0abfc' }}>{tag.wifi.rssi || tag.wifi.rssi_dbm} dBm</span></div>
+				<div className="telemetry-tag-dist" style={{ color: '#4ade80' }}><span>Calculated Distance:</span><span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#4ade80' }}>{tag.wifi.distance_meters} m</span></div>
+				{tag.wifi.ssid && <div className="telemetry-tag-dist" style={{ fontSize: '0.75rem', color: '#94a3b8' }}><span>Wi-Fi SSID:</span><span>{tag.wifi.ssid}</span></div>}
+			  </div>
+			)}
 			{tag.distances ? (
 			  <>
 				<div className="telemetry-tag-dist"><span>Distance to R1:</span><span>{tag.distances.R1}m</span></div>

@@ -1,0 +1,4 @@
+python-socketio[client]>=5.10.0
+websocket-client>=1.6.0
+requests>=2.31.0
+pyserial>=3.5
