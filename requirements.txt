@@ -1,0 +1,14 @@
+# All Python dependencies for the UWB RTLS project.
+# Install into the project venv:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+# --- Phase 1: anchor source (simulator + hardware ingest) ---
+python-socketio[client]>=5.11
+websocket-client>=1.7
+
+# --- Phase 3-4: multilateration solver + Kalman filter ---
+numpy>=1.26
+scipy>=1.11
+
+# --- Testing ---
+pytest>=8.0

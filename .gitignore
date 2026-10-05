@@ -1,0 +1,87 @@
+# ── Secrets & environment ─────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+secrets.json
+secrets.yaml
+secrets.yml
+config/secrets.*
+**/credentials.json
+**/api_key*
+**/api-key*
+
+# ── Python ────────────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.cover
+.coverage
+htmlcov/
+
+# ── Node / JS ─────────────────────────────────────────────────────────────────
+node_modules/
+Model/frontend/dist/
+*.tsbuildinfo
+.npm
+.yarn/cache
+.pnp.*
+
+# ── LaTeX build artifacts ─────────────────────────────────────────────────────
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.idx
+*.ilg
+*.ind
+*.nav
+*.snm
+*.vrb
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Report build outputs (regenerated from .tex/.py source) ──────────────────
+*.pdf
+*.pptx
+*.docx
+
+# ── Project-specific ──────────────────────────────────────────────────────────
+# Runtime map store (re-seeds automatically from config/site.json)
+Model/backend/maps/
+
+# Claude Code (machine-specific paths and user-specific skill locks)
+.claude/
+skills-lock.json
+
+# Graphify knowledge-graph output (regenerated via `graphify update .`)
+graphify-out/
+
+# UTIL dataset (~1.8 GB; re-download via DOCS/datasets/util-uwb-dataset/setupscript.bash)
+DOCS/datasets/

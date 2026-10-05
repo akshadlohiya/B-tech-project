@@ -1,0 +1,10 @@
+{
+  "schema": "tdoa.model/1",
+  "sigma_inlier_m": 0.1373,
+  "sigma_outlier_m": 0.3163,
+  "p_outlier": 0.1097,
+  "bias_m": 0.0028,
+  "n_samples": 93474,
+  "source": "UTIL-IJRR2024",
+  "trials": 3
+}

@@ -1,0 +1,4 @@
+# Anchor source (simulator + hardware ingest). Pure stdlib for the sim maths;
+# only the Socket.IO client is a third-party dependency in Phase 1.
+python-socketio[client]>=5.11
+websocket-client>=1.7

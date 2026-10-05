@@ -1,0 +1,344 @@
+{
+  "schema": "uwb.site/1",
+  "meta": {
+    "name": "Demo Warehouse \u2014 Floor 1",
+    "units": "meters",
+    "coordinateSystem": "x = east, y = up, z = north. Origin at floor centre.",
+    "provenanceLegend": {
+      "guessed": "placeholder value, replace before real deployment",
+      "measured": "measured on site with laser distance meter / steel tape",
+      "tested": "empirically tuned against real hardware readings"
+    },
+    "note": "Single source of truth for both the simulator and the (future) real hardware. Every value carries a provenance tag so the team knows what still needs on-site measurement (see Project Diary, 21 Jul 2026)."
+  },
+  "floor": {
+    "id": "f_floor1",
+    "label": "Floor 1 \u2014 Main Storage",
+    "sizeX": 30,
+    "sizeZ": 30,
+    "ceilingHeight": 5,
+    "provenance": "guessed"
+  },
+  "anchors": [
+    {
+      "id": "A1",
+      "label": "A1 (NW)",
+      "x": -14,
+      "y": 4.6,
+      "z": -14,
+      "antennaDelayBiasM": 0.11,
+      "provenance": "guessed"
+    },
+    {
+      "id": "A2",
+      "label": "A2 (NE)",
+      "x": 14,
+      "y": 4.6,
+      "z": -14,
+      "antennaDelayBiasM": 0.09,
+      "provenance": "guessed"
+    },
+    {
+      "id": "A3",
+      "label": "A3 (SW)",
+      "x": -14,
+      "y": 4.6,
+      "z": 14,
+      "antennaDelayBiasM": 0.13,
+      "provenance": "guessed"
+    },
+    {
+      "id": "A4",
+      "label": "A4 (SE)",
+      "x": 14,
+      "y": 4.6,
+      "z": 14,
+      "antennaDelayBiasM": 0.1,
+      "provenance": "guessed"
+    },
+    {
+      "id": "A5",
+      "label": "A5",
+      "x": 10,
+      "y": 4.6,
+      "z": 14,
+      "antennaDelayBiasM": 0.1,
+      "provenance": "guessed"
+    }
+  ],
+  "walls": [
+    {
+      "id": "W_N",
+      "label": "North wall",
+      "x1": -15,
+      "z1": -15,
+      "x2": 15,
+      "z2": -15,
+      "height": 5,
+      "blocksLos": true,
+      "provenance": "guessed",
+      "material": "wood"
+    },
+    {
+      "id": "W_S",
+      "label": "South wall",
+      "x1": -15,
+      "z1": 15,
+      "x2": 15,
+      "z2": 15,
+      "height": 5,
+      "blocksLos": true,
+      "provenance": "guessed",
+      "material": "wood"
+    },
+    {
+      "id": "W_W",
+      "label": "West wall",
+      "x1": -15,
+      "z1": -15,
+      "x2": -15,
+      "z2": 15,
+      "height": 5,
+      "blocksLos": true,
+      "provenance": "guessed",
+      "material": "wood"
+    },
+    {
+      "id": "W_E",
+      "label": "East wall",
+      "x1": 15,
+      "z1": -15,
+      "x2": 15,
+      "z2": 15,
+      "height": 5,
+      "blocksLos": true,
+      "provenance": "guessed",
+      "material": "wood"
+    },
+    {
+      "id": "R1",
+      "label": "Rack row A",
+      "x1": -5,
+      "z1": -10,
+      "x2": -5,
+      "z2": 10,
+      "height": 3.5,
+      "blocksLos": true,
+      "provenance": "guessed",
+      "material": "metal"
+    },
+    {
+      "id": "R2",
+      "label": "Rack row B",
+      "x1": 5,
+      "z1": -10,
+      "x2": 5,
+      "z2": 10,
+      "height": 3.5,
+      "blocksLos": true,
+      "provenance": "guessed",
+      "material": "metal"
+    }
+  ],
+  "zones": [
+    {
+      "id": "Z_DOCK",
+      "label": "Loading Dock",
+      "xmin": -14,
+      "xmax": -8,
+      "zmin": 8,
+      "zmax": 14,
+      "color": "#f59e0b"
+    },
+    {
+      "id": "Z_AISLE1",
+      "label": "Aisle 1",
+      "xmin": -8,
+      "xmax": -2,
+      "zmin": -14,
+      "zmax": 14,
+      "color": "#38bdf8"
+    },
+    {
+      "id": "Z_AISLE2",
+      "label": "Aisle 2",
+      "xmin": 2,
+      "xmax": 8,
+      "zmin": -14,
+      "zmax": 14,
+      "color": "#38bdf8"
+    },
+    {
+      "id": "Z_STAGING",
+      "label": "Staging Area",
+      "xmin": -2,
+      "xmax": 2,
+      "zmin": -14,
+      "zmax": 14,
+      "color": "#22c55e"
+    }
+  ],
+  "tags": [
+    {
+      "id": "T1",
+      "name": "Forklift",
+      "role": "asset",
+      "battery": 85,
+      "y": 0.5,
+      "speed": 1.6,
+      "allowedZones": [
+        "Z_DOCK",
+        "Z_AISLE1",
+        "Z_STAGING"
+      ],
+      "waypoints": [
+        [
+          -11,
+          10
+        ],
+        [
+          -11,
+          -8
+        ],
+        [
+          -4,
+          -12
+        ],
+        [
+          -4,
+          10
+        ],
+        [
+          -11,
+          10
+        ]
+      ],
+      "pauseAtWaypointSec": 1.5,
+      "loop": true
+    },
+    {
+      "id": "T2",
+      "name": "Worker 1",
+      "role": "person",
+      "battery": 92,
+      "y": 0.9,
+      "speed": 1.2,
+      "allowedZones": [
+        "Z_STAGING",
+        "Z_AISLE1",
+        "Z_AISLE2",
+        "Z_DOCK"
+      ],
+      "waypoints": [
+        [
+          0,
+          -12
+        ],
+        [
+          0,
+          12
+        ],
+        [
+          3,
+          12
+        ],
+        [
+          3,
+          -12
+        ],
+        [
+          0,
+          -12
+        ]
+      ],
+      "pauseAtWaypointSec": 2,
+      "loop": true
+    },
+    {
+      "id": "T3",
+      "name": "Pallet Jack",
+      "role": "asset",
+      "battery": 45,
+      "y": 0.4,
+      "speed": 1,
+      "allowedZones": [
+        "Z_AISLE2",
+        "Z_STAGING"
+      ],
+      "waypoints": [
+        [
+          7,
+          5
+        ],
+        [
+          7,
+          -9
+        ],
+        [
+          11,
+          -9
+        ],
+        [
+          11,
+          9
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          7,
+          5
+        ]
+      ],
+      "pauseAtWaypointSec": 1,
+      "loop": true
+    }
+  ],
+  "ranging": {
+    "mode": "DS-TWR",
+    "updateRateHz": 5,
+    "sequentialPerAnchor": true,
+    "speedOfLightMps": 299702547,
+    "assumedTagHeightM": 0.6,
+    "kalman": {
+      "processNoiseStd": 2.0,
+      "measurementNoiseStd": 0.5
+    },
+    "note": "DS-TWR (double-sided two-way ranging) is what the MaUWB_DW3000 firmware performs; it cancels device clock drift, so no time synchronisation between anchors is required (see Project Diary, 01-04 Apr 2026). Values below are tuned to typical DW3000 behaviour and should be re-tuned against real hardware (provenance: guessed).",
+    "losNoiseStdM": 0.054,
+    "nlosNoiseStdM": 0.054,
+    "nlosBiasMinM": 0.026,
+    "nlosBiasMaxM": 0.399,
+    "maxRangeM": 60,
+    "dropProbLos": 0.01,
+    "dropProbNlos": 0.15,
+    "power": {
+      "rxPowerLosDbm": -80,
+      "rxPowerPerMeterDbm": -0.9,
+      "nlosRxDropDbm": -12,
+      "fpToRxDeltaLosDbm": -3,
+      "nlosFpExtraAttenDbm": -10,
+      "note": "DW3000 exposes received-signal-power and first-path-power registers. A large (rxPower - fpPower) gap indicates the first path was attenuated -> likely NLOS. This is the diagnostic the solver uses to down-weight NLOS ranges (see item list Note 4)."
+    },
+    "provenance": "calibrated:UTIL-IJRR2024",
+    "calibrationNote": "Range-noise model calibrated from the UTIL identification-dataset (DWM1000, LOS + obstructing-material NLOS). sigma_range = sigma_tdoa/sqrt(2). Power (dBm) block left as a DW3000 abstraction: UTIL power_dif units are cross-radio and do not map directly (recalibrate on DW3000 hardware).",
+    "materials": {
+      "metal": {
+        "biasMinM": 0.198,
+        "biasMaxM": 0.583,
+        "noiseStdM": 0.06
+      },
+      "wood": {
+        "biasMinM": 0.026,
+        "biasMaxM": 0.244,
+        "noiseStdM": 0.048
+      },
+      "light": {
+        "biasMinM": 0.001,
+        "biasMaxM": 0.046,
+        "noiseStdM": 0.038
+      }
+    }
+  }
+}
