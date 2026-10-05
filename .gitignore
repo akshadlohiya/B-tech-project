@@ -72,9 +72,20 @@ desktop.ini
 *.pptx
 *.docx
 
+# ── Non-source / local-only directories ───────────────────────────────────────
+DOCS/
+SS/
+TYProjects_Report_Format_2025-26/
+report/
+CLAUDE.md
+architecture.png
+run.sh
+uml_class.png
+twin screenshot.png
+
 # ── Project-specific ──────────────────────────────────────────────────────────
 # Runtime map store (re-seeds automatically from config/site.json)
-Model/backend/maps/
+backend/maps/
 
 # Claude Code (machine-specific paths and user-specific skill locks)
 .claude/
