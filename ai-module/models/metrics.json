@@ -1,0 +1,130 @@
+{
+  "dataset": "UTIL identification (anTag + LOS trials)",
+  "n_samples": 298179,
+  "n_trials": 61,
+  "folds": 5,
+  "feature_sets": {
+    "pd": {
+      "none": {
+        "residual_rms_m": 0.0954,
+        "residual_mae_m": 0.0321,
+        "rms_reduction_pct": 0.0
+      },
+      "linear": {
+        "residual_rms_m": 0.0848,
+        "residual_mae_m": 0.0482,
+        "rms_reduction_pct": 11.1
+      },
+      "hgb": {
+        "residual_rms_m": 0.0748,
+        "residual_mae_m": 0.0343,
+        "rms_reduction_pct": 21.6
+      },
+      "by_material": {
+        "cardboard": {
+          "true_bias_m": -0.016,
+          "none_rms_m": 0.018,
+          "linear_rms_m": 0.02,
+          "hgb_rms_m": 0.045
+        },
+        "foam": {
+          "true_bias_m": -0.006,
+          "none_rms_m": 0.012,
+          "linear_rms_m": 0.017,
+          "hgb_rms_m": 0.034
+        },
+        "metal": {
+          "true_bias_m": 0.315,
+          "none_rms_m": 0.343,
+          "linear_rms_m": 0.246,
+          "hgb_rms_m": 0.218
+        },
+        "LOS": {
+          "true_bias_m": 0.0,
+          "none_rms_m": 0.0,
+          "linear_rms_m": 0.045,
+          "hgb_rms_m": 0.023
+        },
+        "plastic": {
+          "true_bias_m": 0.027,
+          "none_rms_m": 0.037,
+          "linear_rms_m": 0.029,
+          "hgb_rms_m": 0.033
+        },
+        "wooden-cabinet": {
+          "true_bias_m": 0.067,
+          "none_rms_m": 0.094,
+          "linear_rms_m": 0.086,
+          "hgb_rms_m": 0.09
+        },
+        "wooden-shelf": {
+          "true_bias_m": 0.158,
+          "none_rms_m": 0.202,
+          "linear_rms_m": 0.195,
+          "hgb_rms_m": 0.194
+        }
+      }
+    },
+    "pd_snr": {
+      "none": {
+        "residual_rms_m": 0.0954,
+        "residual_mae_m": 0.0321,
+        "rms_reduction_pct": 0.0
+      },
+      "linear": {
+        "residual_rms_m": 0.0851,
+        "residual_mae_m": 0.0476,
+        "rms_reduction_pct": 10.8
+      },
+      "hgb": {
+        "residual_rms_m": 0.0751,
+        "residual_mae_m": 0.0319,
+        "rms_reduction_pct": 21.3
+      },
+      "by_material": {
+        "cardboard": {
+          "true_bias_m": -0.016,
+          "none_rms_m": 0.018,
+          "linear_rms_m": 0.022,
+          "hgb_rms_m": 0.045
+        },
+        "foam": {
+          "true_bias_m": -0.006,
+          "none_rms_m": 0.012,
+          "linear_rms_m": 0.02,
+          "hgb_rms_m": 0.038
+        },
+        "metal": {
+          "true_bias_m": 0.315,
+          "none_rms_m": 0.343,
+          "linear_rms_m": 0.247,
+          "hgb_rms_m": 0.219
+        },
+        "LOS": {
+          "true_bias_m": 0.0,
+          "none_rms_m": 0.0,
+          "linear_rms_m": 0.046,
+          "hgb_rms_m": 0.024
+        },
+        "plastic": {
+          "true_bias_m": 0.027,
+          "none_rms_m": 0.037,
+          "linear_rms_m": 0.027,
+          "hgb_rms_m": 0.054
+        },
+        "wooden-cabinet": {
+          "true_bias_m": 0.067,
+          "none_rms_m": 0.094,
+          "linear_rms_m": 0.086,
+          "hgb_rms_m": 0.094
+        },
+        "wooden-shelf": {
+          "true_bias_m": 0.158,
+          "none_rms_m": 0.202,
+          "linear_rms_m": 0.193,
+          "hgb_rms_m": 0.184
+        }
+      }
+    }
+  }
+}
