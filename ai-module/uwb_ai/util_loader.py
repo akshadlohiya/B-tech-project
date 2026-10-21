@@ -70,44 +70,38 @@ def _read_pose(path: Path) -> Dict[str, np.ndarray]:
     return out
 
 
-def _segments_intersect(p1, p2, q1, q2) -> bool:
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-    d1, d2 = cross(q1, q2, p1), cross(q1, q2, p2)
-    d3, d4 = cross(p1, p2, q1), cross(p1, p2, q2)
-    return (d1 * d2 < 0) and (d3 * d4 < 0)
-
-
-def _point_in_polygon(pt, poly) -> bool:
-    inside = False
-    n = len(poly)
-    for i in range(n):
-        a, b = poly[i], poly[(i + 1) % n]
-        if (a[1] > pt[1]) != (b[1] > pt[1]):
-            x = a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
-            if pt[0] < x:
-                inside = not inside
-    return inside
-
-
 def segment_blocked(a: np.ndarray, b: np.ndarray, obstacle_top: np.ndarray) -> bool:
     """True if segment a-b passes through the vertical prism under `obstacle_top`.
 
-    The prism spans z in [0, top height]. Antennas in UTIL sit below the top of
-    every obstacle, so a crossing in plan view is a real blockage; we still
-    check the z of the crossing point to stay correct for tall geometry.
+    The prism spans z in [0, top height] over the (convex) footprint of the top
+    vertices. The segment is clipped against every face (Cyrus-Beck), so the
+    height is checked where the segment actually crosses the obstacle, and a
+    segment that only touches a face or edge does not count as blocked.
     """
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
     poly = obstacle_top[:, :2]
-    # order vertices around the centroid so edges form a simple polygon
+    # order vertices counter-clockwise around the centroid
     c = poly.mean(axis=0)
     poly = poly[np.argsort(np.arctan2(poly[:, 1] - c[1], poly[:, 0] - c[0]))]
     top = obstacle_top[:, 2].min()
-    hits_xy = _point_in_polygon(a[:2], poly) or _point_in_polygon(b[:2], poly) or any(
-        _segments_intersect(a[:2], b[:2], poly[i], poly[(i + 1) % len(poly)]) for i in range(len(poly))
-    )
-    if not hits_xy:
-        return False
-    return min(a[2], b[2]) < top
+    # inside <=> n . x + k >= 0 for every face (n, k)
+    faces = [(np.array([0.0, 0.0, 1.0]), 0.0), (np.array([0.0, 0.0, -1.0]), top)]
+    for i in range(len(poly)):
+        e = poly[(i + 1) % len(poly)] - poly[i]
+        n = np.array([-e[1], e[0], 0.0])           # inward normal of a CCW edge
+        faces.append((n, -float(n[:2] @ poly[i])))
+    d = b - a
+    t0, t1 = 0.0, 1.0
+    for n, k in faces:
+        num, den = float(n @ a + k), float(n @ d)
+        if den == 0.0:
+            if num < 0:
+                return False
+        elif den > 0:
+            t0 = max(t0, -num / den)
+        else:
+            t1 = min(t1, -num / den)
+    return t1 - t0 > 1e-9
 
 
 def discover_trials(root: Path = DEFAULT_ROOT) -> List[Trial]:

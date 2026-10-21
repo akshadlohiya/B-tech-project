@@ -11,6 +11,18 @@ from **real hardware** — only one environment variable changes.
 
 ---
 
+## Quick start — one command
+From the repo root, after the one-time Python venv setup in Step 2:
+```bash
+./run.sh                  # backend -> simulator gateway -> frontend
+SOURCE=hardware ./run.sh  # same, but with real MaUWB_DW3000 nodes
+```
+It installs the Node dependencies on first run, stops any copies of these services
+already running from this checkout, and stops all three on Ctrl+C. Then open
+`http://localhost:5173`. The steps below start each service by hand instead.
+
+---
+
 ## Step 1 — Backend hub (Node.js)
 Central relay. Broadcasts positions/readings to the dashboard and serves the
 shared site config at `/api/site`.
@@ -39,7 +51,7 @@ python3 -m venv .venv
 Then run the source with the venv active:
 ```bash
 source .venv/bin/activate     # from the repo root (Windows: .venv\Scripts\activate)
-cd Model/anchor-source
+cd anchor-source
 python main.py                # simulated anchors
 ```
 Expect a line like: `[anchor-source] site='Demo Warehouse — Floor 1' source='sim' tags=3 anchors=4`.
@@ -89,7 +101,7 @@ of the sim gateway run:
 
 ```bash
 source .venv/bin/activate
-cd Model/location-engine
+cd location-engine
 python stream_tdoa_ekf.py               # registers the "UTIL Flight Arena" map + streams
 python stream_tdoa_ekf.py --speed 4     # 4x faster replay
 python stream_tdoa_ekf.py --const const3 --trial trial1   # a cluttered constellation
@@ -108,7 +120,7 @@ python run_tdoa_sim.py                                     # offline RMSE benchm
 ```
 Open `http://localhost:5173/?map=wh-tdoa` to watch the warehouse tracked via TDOA+EKF
 (vs the range-based `?map=demo`). Unlike the fixed UTIL replay, this layout **is** editable
-(same site.json / Edit Map). See `Model/calibration/TDOA_SIM.md`.
+(same site.json / Edit Map). See `calibration/TDOA_SIM.md`.
 
 Offline (no browser) you can just print the accuracy:
 ```bash
@@ -117,7 +129,7 @@ python run_tdoa_ekf.py                   # 3D RMSE vs Vicon for one trial
 This is a **walled-off track**: the geometry and motion are *real recordings*, so anchors
 and the tag can't be moved here (that would falsify the measurements). Use the simulator
 for editable layouts. See `DOCS/IMPLEMENTATION_PLAN.md` (Datasets) and
-`Model/calibration/CALIBRATION.md`.
+`calibration/CALIBRATION.md`.
 
 ## Editing the site
 Two ways to change the space:

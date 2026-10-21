@@ -23,15 +23,15 @@ single file.
   (DS-TWR)       power diag.    + /api/site          room / anchors / zones
 ```
 
-- **`Model/config/site.json`** — single source of truth (metres): anchors, walls,
+- **`config/site.json`** — single source of truth (metres): anchors, walls,
   labelled zones, tag routes, and the ranging/noise model. Values tagged
   *guessed / measured / tested*.
-- **`Model/anchor-source/`** — the data producer. `SimAnchorSource` models realistic
+- **`anchor-source/`** — the data producer. `SimAnchorSource` models realistic
   UWB behaviour (LOS/NLOS via wall occlusion, antenna-delay bias, positive-only
   NLOS bias, signal-power diagnostics, dropped readings). `HardwareAnchorSource`
   is the drop-in seam for the real MaUWB_DW3000 nodes.
-- **`Model/backend/`** — thin Socket.IO hub; also serves the site config.
-- **`Model/frontend/`** — React + Three.js digital twin; draws live tags with
+- **`backend/`** — thin Socket.IO hub; also serves the site config.
+- **`frontend/`** — React + Three.js digital twin; draws live tags with
   green/red anchor range lines showing LOS vs NLOS.
 
 ## Mapping platform
@@ -40,14 +40,14 @@ The dashboard is now a standalone indoor-mapping tool (Mappedin-style):
 - **2D floorplan editor** — draw walls, areas/zones, place anchors, lay out tag routes; **Save & Apply**
   hot-reloads the simulator, solver and 3D twin.
 - **Live 3D viewer** — open `?map=KEY` to watch that map's live tracking; **Share** the key so
-  anyone can view. Maps live in the backend store (`Model/backend/maps/`), independent of the code.
+  anyone can view. Maps live in the backend store (`backend/maps/`), independent of the code.
 - The gateway runs one map at a time: `MAP=<key> python main.py`.
 
 ## Status
 **Phases 1, 3, 4, 5 complete:**
 - Local-metre coordinates, shared versioned data format, hardware-ready simulator with realistic
   LOS/NLOS, config-driven digital twin.
-- **Range multilateration solver** (`Model/location-engine/`) with NLOS down-weighting from the
+- **Range multilateration solver** (`location-engine/`) with NLOS down-weighting from the
   DW3000 power gap — turns raw ranges into a live position estimate (~0.6 m median raw error).
 - **Constant-velocity Kalman filter** fusing the raw fixes into a smooth track with velocity and an
   uncertainty ring; toggle "Raw fix + uncertainty" in the viewer to see raw-vs-filtered live.
@@ -60,4 +60,4 @@ Next: basic AI — geofence/zone anomaly alerts + short-horizon trajectory predi
 Kalman velocity). See `DOCS/IMPLEMENTATION_PLAN.md`.
 
 ## Run it
-See **`Model/STARTUP_GUIDE.md`** — three terminals (backend, anchor-source, frontend).
+See **`STARTUP_GUIDE.md`** — three terminals (backend, anchor-source, frontend).

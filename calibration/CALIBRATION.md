@@ -46,9 +46,9 @@ tighter, bias-dominated error.
 ## Reproduce
 
 ```bash
-python Model/calibration/calibrate_from_util.py            # analyse + print only
-python Model/calibration/calibrate_from_util.py --apply    # write into site.json
-pytest Model/calibration -q                                # confirm the sim matches
+python calibration/calibrate_from_util.py            # analyse + print only
+python calibration/calibrate_from_util.py --apply    # write into site.json
+pytest calibration -q                                # confirm the sim matches
 ```
 
 The validation tests generate simulated readings and check that the LOS noise level and

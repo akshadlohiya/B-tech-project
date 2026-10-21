@@ -6,7 +6,8 @@ site's x/z plane (metres).
 
 Alerts raised per tag:
   * "outside_allowed" -- the tag is in a zone not in its allowedZones
-                         (or in no zone at all while it has an allow-list)
+                         (or in no zone at all while it has an allow-list);
+                         fires again if it moves to a different such zone
   * "stale"           -- no update for longer than `stale_after_s`
 
 Each alert type fires once when the condition starts, not on every update.
@@ -43,14 +44,18 @@ class ZoneMonitor:
         return None
 
     def _raise(self, tag_id: str, kind: str, zone, t: float, msg: str) -> List[Alert]:
+        # outside_allowed is keyed by zone so a move to another forbidden zone re-fires
+        key = (kind, zone) if kind == "outside_allowed" else (kind, None)
         active = self._active.setdefault(tag_id, set())
-        if kind in active:
+        if key in active:
             return []
-        active.add(kind)
+        self._clear(tag_id, kind)
+        active.add(key)
         return [Alert(tag_id, kind, zone, t, msg)]
 
     def _clear(self, tag_id: str, kind: str) -> None:
-        self._active.get(tag_id, set()).discard(kind)
+        active = self._active.get(tag_id, set())
+        active -= {k for k in active if k[0] == kind}
 
     def update(self, tag_id: str, x: float, z: float, t: float) -> List[Alert]:
         """Feed one position; returns newly raised alerts."""

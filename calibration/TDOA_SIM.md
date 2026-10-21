@@ -29,11 +29,11 @@ trials from all four constellations and save `tdoa_model.json`:
 | `bias_m`          | +0.003 |
 
 ```bash
-python Model/calibration/train_tdoa_model.py          # fit + save the model
-python Model/calibration/train_tdoa_model.py --dry-run
+python calibration/train_tdoa_model.py          # fit + save the model
+python calibration/train_tdoa_model.py --dry-run
 ```
 
-## 2. Generative simulator — `Model/anchor-source/sim_tdoa.py`
+## 2. Generative simulator — `anchor-source/sim_tdoa.py`
 
 `TdoaSimulator(site, model)` yields `TdoaEvent(t, id_a, id_b, tdoa, truth, tag_id)` — the
 same contract as `DatasetTdoaSource`, so it drops into the EKF and streamer unchanged.
@@ -59,11 +59,11 @@ Each tag gets its own EKF, cold-started (no ground truth) from a warm-up batch.
 
 ```bash
 # Offline accuracy benchmark (sim has ground truth):
-python Model/location-engine/run_tdoa_sim.py                 # warehouse
-python Model/location-engine/run_tdoa_sim.py --seconds 60 --seed 1
+python location-engine/run_tdoa_sim.py                 # warehouse
+python location-engine/run_tdoa_sim.py --seconds 60 --seed 1
 
 # Live in the 3D twin (backend + frontend running):
-python Model/location-engine/stream_tdoa_ekf.py --source sim --loop --speed 2
+python location-engine/stream_tdoa_ekf.py --source sim --loop --speed 2
 #   -> registers "Demo Warehouse (TDOA)"; open  http://localhost:5173/?map=wh-tdoa
 ```
 

@@ -35,21 +35,33 @@ def rule_weight(power_dif, normal_gap_db=3.0, k=0.25):
     return 1.0 / (1.0 + k * np.maximum(0.0, power_dif - normal_gap_db))
 
 
+def trial_material(link_materials) -> str:
+    """A trial's obstacle material: its blocked links' material, else "none".
+    (Not max(): "cardboard", "foam" and "metal" all sort before "none".)"""
+    blocked = set(link_materials) - {"none"}
+    return blocked.pop() if blocked else "none"
+
+
 def solve(ranges, weights, seed):
     sw = np.sqrt(weights)
     res = least_squares(lambda p: sw * (np.linalg.norm(ANCHORS - p, axis=1) - ranges), seed)
     return res.x
 
 
-def run(n_trials: int = 2000, seed: int = 0) -> dict:
-    s = load_link_samples()
-    rng = np.random.default_rng(seed)
-    trial_mat = {g: s.material[s.group == g].max() for g in np.unique(s.group)}  # "none" < any material
+def split_trials(s, rng) -> list:
+    """Held-out trial ids: a third of each material's trials (at least one)."""
+    trial_mat = {g: trial_material(s.material[s.group == g]) for g in np.unique(s.group)}
     test_trials = []
     for mat in sorted(set(trial_mat.values())):
         ids = [g for g, m in trial_mat.items() if m == mat]
         test_trials += list(rng.choice(ids, max(1, len(ids) // 3), replace=False))
-    is_test = np.isin(s.group, test_trials)
+    return test_trials
+
+
+def run(n_trials: int = 2000, seed: int = 0, s=None) -> dict:
+    s = load_link_samples() if s is None else s
+    rng = np.random.default_rng(seed)
+    is_test = np.isin(s.group, split_trials(s, rng))
     train = np.flatnonzero(~is_test)
     train = rng.choice(train, min(60000, len(train)), replace=False)
     model = NlosBiasModel("pd", make_estimator()).fit(feature_matrix(s, "pd")[train], s.bias[train])
@@ -89,7 +101,8 @@ def run(n_trials: int = 2000, seed: int = 0) -> dict:
 
 
 def run_seeds(n_seeds: int = 10, n_trials: int = 2000) -> dict:
-    runs = [run(n_trials, seed) for seed in range(n_seeds)]
+    s = load_link_samples()
+    runs = [run(n_trials, seed, s) for seed in range(n_seeds)]
     methods = list(runs[0]["overall"])
     mean = lambda vals: round(float(np.mean(vals)), 4)
     overall = {m: {k: mean([r["overall"][m][k] for r in runs]) for k in runs[0]["overall"][m]}

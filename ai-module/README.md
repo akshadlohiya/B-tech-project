@@ -14,14 +14,14 @@ Integrate it only after the tests and evaluation below look right on real DW1000
 | `uwb_ai/eval_positioning.py` | Monte Carlo test on a 3-anchor room: plain LS vs the current power-gap rule vs the AI model, using held-out real UTIL links. |
 | `uwb_ai/zones.py` | Geofence alerts (outside allowed zone, stale tag), driven by `config/site.json`. Plan Phase 6. |
 | `uwb_ai/predict.py` | Short-horizon "ghost" prediction from the Kalman velocity, with an uncertainty radius. Plan Phase 6. |
-| `tests/test_ai.py` | 18 tests. |
+| `tests/test_ai.py` | 37 tests. |
 
 ## Run
 ```bash
 cd ai-module
 ../.venv/bin/pip install -r requirements.txt
 ../.venv/bin/python -m uwb_ai.train_nlos          # ~25 s, writes models/
-../.venv/bin/python -m uwb_ai.eval_positioning    # ~1 min, 10 seeds
+../.venv/bin/python -m uwb_ai.eval_positioning    # ~3 min, 10 seeds
 ../.venv/bin/python -m pytest -q tests
 ```
 
@@ -41,11 +41,13 @@ The gain comes almost entirely from metal (0.34 → 0.22 m). On LOS links the mo
 
 | Solver | RMSE | P50 | P90 |
 |---|---|---|---|
-| plain LS | 0.117 m | 0.048 m | 0.196 m |
-| power-gap rule (current) | 0.113 m | 0.049 m | 0.183 m |
-| **AI bias model** | **0.105 m** | **0.047 m** | **0.145 m** |
+| plain LS | 0.120 m | 0.049 m | 0.203 m |
+| power-gap rule (current) | 0.113 m | 0.050 m | 0.187 m |
+| **AI bias model** | **0.092 m** | **0.045 m** | **0.126 m** |
 
-The AI model gives a 26% lower P90 than plain LS, but it beats plain LS in only 5 of 10 seeds. There are just 6 trials per obstacle material, so the result varies a lot from split to split.
+The AI model gives a 23% lower RMSE and a 38% lower P90 than plain LS, and beats it in 9 of 10 seeds. Almost all of the gain is on metal (0.230 → 0.136 m RMSE); on foam and cardboard it costs about 6 mm from over-correction. There are just 6 trials per obstacle material, so per-seed results still vary.
+
+(Earlier numbers in this file, "5 of 10 seeds", came from a split bug: `max()` over material names put cardboard/foam/metal trials into the LOS pool, so some seeds held out no metal trial and others left only two to train on. Fixed and guarded by `test_eval_split_holds_out_every_material`.)
 
 ## Findings worth putting in the paper
 1. **Blocked ≠ biased.** Foam, cardboard and plastic block the path but add < 3 cm of bias. Metal adds about 32 cm, wooden shelves about 16 cm and cabinets about 7 cm. That is why the model predicts *bias* rather than classifying LOS/NLOS.
