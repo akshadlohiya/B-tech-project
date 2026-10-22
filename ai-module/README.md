@@ -1,8 +1,8 @@
-# ai-module: the AI component (standalone, not yet integrated)
+# ai-module: the AI component
 
-This module is self-contained: it imports nothing from `anchor-source/`, `location-engine/` or `backend/`.
-It only reads `config/site.json` and the UTIL dataset in `DOCS/datasets/`.
-Integrate it only after the tests and evaluation below look right on real DW1000 data.
+The models and logic live here; `location-engine/` uses them live (see **Integration** below).
+This module itself still imports nothing from the engine, gateway or backend. It only reads
+`config/site.json` and the UTIL dataset in `DOCS/datasets/`.
 
 ## What's here
 
@@ -57,8 +57,32 @@ The AI model gives a 23% lower RMSE and a 38% lower P90 than plain LS, and beats
 ## Why not YOLO?
 YOLO detects objects in **camera images**. This system has no camera, and the project diary dropped camera-based counting (15 Oct 2025) for cost reasons. Using it would mean buying a camera and building a separate vision pipeline that does nothing for UWB accuracy. The AI here works on the radio data the DW1000 already produces, so it improves the core metric (position error) at no hardware cost. A camera + YOLO add-on (e.g. checking which item is at a tracked location) is possible later, but it is a separate feature.
 
-## Integration plan (not done yet)
-1. On the real hardware, collect labelled LOS/NLOS ranges at known points (paper experiments E1/E3). Run `train_nlos` on UTIL + your own data, because DW1000 module/antenna differences shift the power gap.
-2. In `location-engine/engine.py`, swap `nlos_weight(...)` for `NlosBiasModel.correct(range, rxPower, fpPower)`. Use the corrected range and weight, and keep the rule as a fallback when the model file is missing.
-3. Have the engine call `ZoneMonitor.update` and `predict_ahead`, and fill the `alerts` field that `shared/DATA_FORMAT.md` already reserves.
-4. Optional: make the firmware send DW1000 receive quality so the `pd_snr` model can be used.
+## Integration (done)
+- **NLOS correction** — `location-engine/nlos_ai.py` loads `models/nlos_bias_pd.joblib`; `engine.py`
+  shortens each range by the predicted bias and weights it with `bias_to_weight`. Selected by
+  `ranging.nlosModel` (`"ai"` default, `"rule"` = old power-gap weighting). If the model or
+  scikit-learn is missing, or a reading has no usable power values, the engine falls back to the rule.
+- **Baseline alignment** — the model learned UTIL's gap scale (LOS median `los_gap_db` = 13.09 dB,
+  stored in the model file); each site's gaps are shifted by `los_gap_db - (-power.fpToRxDeltaLosDbm)`.
+  Without it the model reads blocked sim links as clear and tracking gets *worse* (36 → 50 cm).
+- **Zones + prediction** — the engine runs `ZoneMonitor` and `predict_ahead` on every fix and emits
+  `alerts` and `ghost` (see `shared/DATA_FORMAT.md`); the gateway also sends stale-tag alerts.
+
+Simulator benchmark (`python location-engine/run_nlos_bench.py`, Kalman-filtered error, 3 seeds):
+
+| Map | rule mean / p90 | AI mean / p90 |
+|---|---|---|
+| `config/site.json` (metal racks) | 36.8 / 67.1 cm | **16.2 / 29.7 cm** |
+| `backend/maps/demo.json` (older uncalibrated ranging) | 69.2 / 128.6 cm | **37.5 / 75.1 cm** |
+| no walls (pure LOS) | 11.1 / 22.2 cm | **9.9 / 21.0 cm** |
+
+**Known limit:** the simulator widens the power gap by the same 10 dB for *every* wall material,
+while in UTIL light materials (cardboard/foam/plastic) do not widen it at all. So in the sim a
+wall set to `"light"` by hand looks exactly like metal, the AI subtracts a metal-sized bias, and
+tracking gets worse (12.0 → 19.6 cm). No estimator can separate the two from identical readings;
+use `"nlosModel": "rule"` for such a map, or give the sim per-material power gaps. The map editor
+does not set materials, so editor-drawn walls use the generic NLOS model, where the AI helps.
+
+Still to do on hardware: collect labelled DW3000 links (paper E1/E3), retrain on UTIL + own
+data, and set `fpToRxDeltaLosDbm` to the measured LOS gap. Optionally make the firmware send
+receive quality so the `pd_snr` model can be used.

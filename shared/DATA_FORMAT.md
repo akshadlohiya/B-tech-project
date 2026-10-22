@@ -57,6 +57,23 @@ estimate. The shape stays the same, so the frontend never changes.
   "pos":   { "x": -11.0, "y": 0.5, "z": 3.2 },   // metres
   "truth": { "x": -11.0, "z": 3.2 },              // sim only, for the accuracy HUD
   "zone":  "Z_AISLE1",
-  "t":     1757500000.123
+  "t":     1757500000.123,
+  // Phase 6 (AI) — added fields; everything above is unchanged
+  "nlos":   { "method": "ai",                      // "ai" | "rule" (ranging.nlosModel, or fallback)
+              "bias": { "A1": 0.02, "A3": 0.28 } }, // predicted NLOS bias subtracted per anchor (m), ai only
+  "ghost":  { "x": -10.1, "z": 3.4, "r": 0.6, "horizonS": 1.0 },  // predicted position + 1σ radius
+  "alerts": []                                      // alerts newly raised by this update (see below)
 }
+```
+
+## `alert` message (engine -> backend -> dashboard)
+
+Raised once when the condition starts (geofence from `tags[].allowedZones`), also
+inside `location_update.alerts`. The backend keeps the last 50 per map and replays
+them in `initial_state.alerts`.
+
+```jsonc
+{ "tagId": "T1", "kind": "outside_allowed",   // or "stale" (no fix for ai.staleAfterS)
+  "zone": "Z_AISLE2",                         // null for stale / unmapped area
+  "t": 1757500000.123, "message": "T1 entered Z_AISLE2", "mapKey": "demo" }
 ```

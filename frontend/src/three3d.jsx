@@ -120,6 +120,28 @@ function RawGhost({ p }) {
   );
 }
 
+// AI short-horizon prediction: where the Kalman velocity puts the tag
+// `ghost.horizonS` seconds ahead, with a 1σ uncertainty ring.
+function Ghost({ p, color }) {
+  const g = p.ghost;
+  if (!g) return null;
+  const y = p.pos?.y ?? 0.5;
+  const r = Math.max(0.15, g.r ?? 0.3);
+  return (
+    <group>
+      <mesh position={[g.x, y, g.z]}>
+        <sphereGeometry args={[0.3, 12, 12]} />
+        <meshBasicMaterial color={color} transparent opacity={0.35} />
+      </mesh>
+      <mesh position={[g.x, 0.04, g.z]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[Math.max(0.05, r - 0.05), r, 32]} />
+        <meshBasicMaterial color={color} transparent opacity={0.45} side={THREE.DoubleSide} />
+      </mesh>
+      <Line points={[[p.pos.x, y, p.pos.z], [g.x, y, g.z]]} color={color} lineWidth={1.2} dashed dashSize={0.2} gapSize={0.15} transparent opacity={0.6} />
+    </group>
+  );
+}
+
 // Fading path history. `trails` = estimated (Kalman) path per tag; `truthTrails`
 // = ground-truth path (sim) for side-by-side comparison (Project Diary, 28 Jan).
 function Trails({ map, trails, truthTrails, showTrails, showTruePath }) {
@@ -137,7 +159,7 @@ function Trails({ map, trails, truthTrails, showTrails, showTruePath }) {
   );
 }
 
-export function Scene({ map, positions, readings, showRangeLines, showRaw, trails, truthTrails, showTrails, showTruePath, selected, onSelect }) {
+export function Scene({ map, positions, readings, showRangeLines, showRaw, showGhost, trails, truthTrails, showTrails, showTruePath, selected, onSelect }) {
   const anchorsById = {};
   map.anchors.forEach((a) => { anchorsById[a.id] = a; });
   const half = Math.max(map.floor.sizeX, map.floor.sizeZ) / 2;
@@ -162,6 +184,7 @@ export function Scene({ map, positions, readings, showRangeLines, showRaw, trail
           <Tag pos={p.pos} name={p.name} battery={p.battery} role={roleOf(map, p.tagId)} zone={zoneLabel(map, p.zone)} selected={selected?.type === 'tag' && selected.id === p.tagId} onSelect={() => onSelect({ type: 'tag', id: p.tagId })} />
           {showRangeLines && <RangeLines anchorsById={anchorsById} pos={p.pos} reading={readings[p.tagId]} />}
           {showRaw && <RawGhost p={p} />}
+          {showGhost && <Ghost p={p} color={ROLE_COLOR[roleOf(map, p.tagId)] || ROLE_COLOR.default} />}
         </React.Fragment>
       ))}
       <OrbitControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} minDistance={3} maxDistance={half * 4} />
@@ -201,10 +224,11 @@ export function DetailsPanel({ map, selected, positions, readings, onClose }) {
       {p?.error != null && <Row k="Filtered error" v={`${(p.error * 100).toFixed(0)} cm`} />}
       {p?.rawError != null && <Row k="Raw error" v={`${(p.rawError * 100).toFixed(0)} cm`} />}
       {p?.residual != null && <Row k="Solve residual" v={`${p.residual} m`} />}
+      {p?.nlos && <Row k="NLOS correction" v={p.nlos.method === 'ai' ? 'AI bias model' : 'power-gap rule'} />}
       {rd && <div style={{ marginTop: 6 }}>{rd.ranges.map((r) => (
         <div key={r.anchorId} className="telemetry-tag-dist">
           <span>{r.anchorId} <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: 4, color: 'white', background: !r.valid ? '#64748b' : r.nlos ? '#ef4444' : '#22c55e' }}>{!r.valid ? 'DROP' : r.nlos ? 'NLOS' : 'LOS'}</span></span>
-          <span>{r.valid ? `${r.range.toFixed(2)} m` : '—'}</span>
+          <span>{r.valid ? `${r.range.toFixed(2)} m` : '—'}{r.valid && p?.nlos?.bias?.[r.anchorId] >= 0.01 ? <span style={{ color: '#38bdf8' }}> −{(p.nlos.bias[r.anchorId] * 100).toFixed(0)} cm</span> : null}</span>
         </div>
       ))}</div>}
     </div>

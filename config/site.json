@@ -295,12 +295,19 @@
       "loop": true
     }
   ],
+  "ai": {
+    "predictHorizonS": 1.0,
+    "staleAfterS": 5.0,
+    "note": "Phase 6: ghost marker this many seconds ahead (Kalman velocity); stale alert after this long without a fix."
+  },
   "ranging": {
     "mode": "DS-TWR",
     "updateRateHz": 5,
     "sequentialPerAnchor": true,
     "speedOfLightMps": 299702547,
     "assumedTagHeightM": 0.6,
+    "nlosModel": "ai",
+    "nlosModelNote": "\"ai\": learned bias model from ai-module (shortens + down-weights blocked ranges); \"rule\": power-gap down-weighting only. The AI aligns gaps to this site's LOS baseline (-power.fpToRxDeltaLosDbm), so on hardware set that to the measured median LOS gap.",
     "kalman": {
       "processNoiseStd": 2.0,
       "measurementNoiseStd": 0.5

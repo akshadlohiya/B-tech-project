@@ -17,6 +17,8 @@ export default function Viewer3D({ mapKey }) {
   const [showTrails, setShowTrails] = useState(true);
   const [showTruePath, setShowTruePath] = useState(false);
   const [showAccuracy, setShowAccuracy] = useState(true);
+  const [showGhost, setShowGhost] = useState(true);
+  const [alerts, setAlerts] = useState([]);
   const [trails, setTrails] = useState({});
   const [truthTrails, setTruthTrails] = useState({});
   const [errHist, setErrHist] = useState({});
@@ -31,7 +33,8 @@ export default function Viewer3D({ mapKey }) {
     const socket = io(SOCKET_URL);
     socket.on('connect', () => { setIsConnected(true); socket.emit('join_map', mapKey); });
     socket.on('disconnect', () => setIsConnected(false));
-    socket.on('initial_state', (s) => { setPositions(s.positions || {}); setReadings(s.readings || {}); });
+    socket.on('initial_state', (s) => { setPositions(s.positions || {}); setReadings(s.readings || {}); setAlerts(s.alerts || []); });
+    socket.on('alert', (a) => setAlerts((xs) => xs.concat([a]).slice(-ALERTS_MAX)));
     socket.on('location_update', (d) => {
       if (!d || !d.tagId || !d.pos) return;   // ignore malformed/partial updates
       setPositions((p) => ({ ...p, [d.tagId]: d }));
@@ -61,6 +64,7 @@ export default function Viewer3D({ mapKey }) {
         <label className="info-row" style={{ cursor: 'pointer' }}><span className="info-label">Raw fix + uncertainty (Kalman off)</span><input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} /></label>
         <label className="info-row" style={{ cursor: 'pointer' }}><span className="info-label">Motion trails</span><input type="checkbox" checked={showTrails} onChange={(e) => setShowTrails(e.target.checked)} /></label>
         <label className="info-row" style={{ cursor: 'pointer' }}><span className="info-label">True path overlay (sim)</span><input type="checkbox" checked={showTruePath} onChange={(e) => setShowTruePath(e.target.checked)} /></label>
+        <label className="info-row" style={{ cursor: 'pointer' }}><span className="info-label">Predicted position (AI)</span><input type="checkbox" checked={showGhost} onChange={(e) => setShowGhost(e.target.checked)} /></label>
         <label className="info-row" style={{ cursor: 'pointer' }}><span className="info-label">Accuracy panel</span><input type="checkbox" checked={showAccuracy} onChange={(e) => setShowAccuracy(e.target.checked)} /></label>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           <button style={btn} onClick={() => goTo({})}>← Maps</button>
@@ -70,6 +74,7 @@ export default function Viewer3D({ mapKey }) {
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 12 }}>
           <span style={{ color: '#22c55e' }}>■</span> LOS&nbsp;<span style={{ color: '#ef4444' }}>■</span> NLOS&nbsp;<span style={{ color: '#64748b' }}>■</span> dropped<br />Click any anchor or tag for details.
         </p>
+        <AlertList alerts={alerts} map={map} />
       </div>
 
       <DetailsPanel map={map} selected={selected} positions={positions} readings={readings} onClose={() => setSelected(null)} />
@@ -80,7 +85,7 @@ export default function Viewer3D({ mapKey }) {
         {tags.map((t) => (
           <div key={t.tagId} className="telemetry-tag-card" style={{ cursor: 'pointer', border: selected?.id === t.tagId ? '1px solid #38bdf8' : undefined }} onClick={() => setSelected({ type: 'tag', id: t.tagId })}>
             <div className="telemetry-tag-header"><span>{t.name}</span><span style={{ fontSize: '0.8rem', color: t.battery < 20 ? '#ef4444' : '#10b981' }}>⚡ {t.battery ?? '–'}%</span></div>
-            <div className="telemetry-tag-dist"><span>Zone</span><span>{zoneLabel(map || { zones: [] }, t.zone) || '—'}</span></div>
+            <div className="telemetry-tag-dist"><span>Zone</span><span style={{ color: outsideAllowed(map, t) ? '#ef4444' : undefined }}>{zoneLabel(map || { zones: [] }, t.zone) || '—'}{outsideAllowed(map, t) ? ' ⚠' : ''}</span></div>
             <div className="telemetry-tag-dist"><span>Speed</span><span>{t.vel ? `${t.vel.speed} m/s` : '—'}</span></div>
             <div className="telemetry-tag-dist"><span>Error (Kalman / raw)</span><span>{t.error != null ? `${(t.error * 100).toFixed(0)} / ${((t.rawError ?? t.error) * 100).toFixed(0)} cm` : '—'}</span></div>
           </div>
@@ -95,7 +100,7 @@ export default function Viewer3D({ mapKey }) {
       <div className="map-container" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
         <CanvasErrorBoundary>
           <Canvas shadows camera={{ position: [18, 16, 22], fov: 50 }} gl={{ antialias: true, powerPreference: 'default', failIfMajorPerformanceCaveat: false }}>
-            {map && <Scene map={map} positions={positions} readings={readings} showRangeLines={showRangeLines} showRaw={showRaw} trails={trails} truthTrails={truthTrails} showTrails={showTrails} showTruePath={showTruePath} selected={selected} onSelect={setSelected} />}
+            {map && <Scene map={map} positions={positions} readings={readings} showRangeLines={showRangeLines} showRaw={showRaw} showGhost={showGhost} trails={trails} truthTrails={truthTrails} showTrails={showTrails} showTruePath={showTruePath} selected={selected} onSelect={setSelected} />}
           </Canvas>
         </CanvasErrorBoundary>
       </div>
@@ -105,6 +110,30 @@ export default function Viewer3D({ mapKey }) {
 
 const btn = { background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 13 };
 const TRAIL_MAX = 150;   // ~30 s of history at 5 Hz
+const ALERTS_MAX = 50;
+
+// A tag is out of bounds when it has an allow-list and its zone is not on it.
+const outsideAllowed = (map, p) => {
+  const allowed = (map?.tags.find((t) => t.id === p.tagId) || {}).allowedZones;
+  return !!(allowed && allowed.length && !allowed.includes(p.zone));
+};
+
+// Recent geofence / stale-tag alerts raised by the AI zone monitor, newest first.
+function AlertList({ alerts, map }) {
+  if (!alerts.length) return null;
+  const nameOf = (id) => (map?.tags.find((t) => t.id === id) || {}).name || id;
+  return (
+    <div style={{ marginTop: 10, borderTop: '1px solid var(--glass-border)', paddingTop: 8 }}>
+      <div className="info-label" style={{ marginBottom: 4 }}>⚠ Alerts ({alerts.length})</div>
+      {alerts.slice(-5).reverse().map((a, i) => (
+        <div key={`${a.t}-${a.tagId}-${i}`} className="telemetry-tag-dist" style={{ fontSize: '0.78rem' }}>
+          <span style={{ color: a.kind === 'stale' ? '#fbbf24' : '#fca5a5' }}>{nameOf(a.tagId)}: {a.kind === 'stale' ? 'no signal' : `entered ${zoneLabel(map || { zones: [] }, a.zone) || 'unmapped area'}`}</span>
+          <span style={{ color: '#64748b' }}>{a.t ? new Date(a.t * 1000).toLocaleTimeString() : ''}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // Append to a per-tag history buffer (points, or {err,raw} samples), capped.
 function appendPt(store, id, pt) {

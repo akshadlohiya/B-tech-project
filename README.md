@@ -56,8 +56,13 @@ The dashboard is now a standalone indoor-mapping tool (Mappedin-style):
 - **Interactive twin:** click anchors/tags for details; **Edit Map** to add/remove/move anchors
   and tags, persisted to `site.json` with live reload of the simulator, solver and dashboard.
 
-Next: basic AI — geofence/zone anomaly alerts + short-horizon trajectory prediction (rides on the
-Kalman velocity). See `DOCS/IMPLEMENTATION_PLAN.md`.
+**Phase 6 (AI) integrated** (`ai-module/`, wired in via `location-engine/nlos_ai.py`):
+- **Learned NLOS correction** — a gradient-boosted model trained on real DW1000 links predicts each
+  blocked range's bias, so the engine shortens it instead of only down-weighting it. Simulator mean
+  error 36.8 → 16.2 cm on the site layout (`python location-engine/run_nlos_bench.py`). Switch back
+  with `ranging.nlosModel: "rule"`.
+- **Geofence alerts** (tag outside its `allowedZones`, or silent) and a **predicted "ghost" position**
+  1 s ahead, shown in the viewer.
 
 ## Run it
 See **`STARTUP_GUIDE.md`** — three terminals (backend, anchor-source, frontend).

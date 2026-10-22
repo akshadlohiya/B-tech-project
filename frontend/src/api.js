@@ -1,5 +1,7 @@
 // Backend REST + tiny URL router for the mapping platform.
-export const API = 'http://localhost:3000';
+// The backend runs on the same machine that serves this page (the Pi when it is the
+// server), so other devices on the network reach it too — not just localhost.
+export const API = `${window.location.protocol}//${window.location.hostname}:3000`;
 export const SOCKET_URL = API;
 
 const json = (r) => { if (!r.ok) return r.json().then((j) => { throw new Error(j.error || r.status); }); return r.json(); };

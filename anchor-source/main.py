@@ -98,6 +98,7 @@ def _build():
     engine = LocationEngine(site)
     print(f"[gateway] map='{site.get('meta', {}).get('name', MAP_KEY)}' key='{MAP_KEY}' "
           f"source='{source.name}' tags={len(site['tags'])} anchors={len(site['anchors'])}")
+    print(f"[gateway] NLOS handling: {engine.nlos_note}")
     return source, engine, source.cycles()
 
 
@@ -125,6 +126,7 @@ def main() -> None:
             estimate = engine.estimate(reading_dict, truth)
             if estimate is not None:
                 estimate["mapKey"] = MAP_KEY
+            alerts = (estimate["alerts"] if estimate is not None else []) + engine.check_stale(reading_dict["t"])
             # ride out transient disconnects: the client auto-reconnects, so skip
             # emitting mid-reconnect rather than crashing on BadNamespaceError.
             if sio.connected:
@@ -132,6 +134,8 @@ def main() -> None:
                     sio.emit("reading", reading_dict)
                     if estimate is not None:
                         sio.emit("update_location", estimate)
+                    for alert in alerts:
+                        sio.emit("alert", {**alert, "mapKey": MAP_KEY})
                 except Exception:
                     pass
     except (KeyboardInterrupt, StopIteration):

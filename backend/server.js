@@ -137,8 +137,9 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 
 // Per-map latest state, so a fresh viewer gets an immediate snapshot.
-const state = {};   // mapKey -> { positions: {tagId:...}, readings: {tagId:...} }
-const forMap = (k) => (state[k] ||= { positions: {}, readings: {} });
+const state = {};   // mapKey -> { positions: {tagId:...}, readings: {tagId:...}, alerts: [...] }
+const forMap = (k) => (state[k] ||= { positions: {}, readings: {}, alerts: [] });
+const ALERTS_KEPT = 50;   // recent geofence/stale alerts replayed to a fresh viewer
 
 io.on('connection', (socket) => {
   socket.on('join_map', (key) => {
@@ -146,7 +147,7 @@ io.on('connection', (socket) => {
     socket.join(`map:${key}`);
     socket.data.mapKey = key;
     const s = forMap(key);
-    socket.emit('initial_state', { positions: s.positions, readings: s.readings });
+    socket.emit('initial_state', { positions: s.positions, readings: s.readings, alerts: s.alerts });
   });
 
   // Producer messages carry mapKey; fan out only to that map's room.
@@ -155,6 +156,15 @@ io.on('connection', (socket) => {
     const key = data.mapKey || 'demo';
     forMap(key).positions[data.tagId] = data;
     io.to(`map:${key}`).emit('location_update', data);
+  });
+
+  socket.on('alert', (data) => {
+    if (!data || !data.tagId) return;
+    const key = data.mapKey || 'demo';
+    const s = forMap(key);
+    s.alerts.push(data);
+    if (s.alerts.length > ALERTS_KEPT) s.alerts.splice(0, s.alerts.length - ALERTS_KEPT);
+    io.to(`map:${key}`).emit('alert', data);
   });
 
   socket.on('reading', (data) => {

@@ -89,7 +89,11 @@ def main(argv=None) -> dict:
 
         X = feature_matrix(samples, fs)
         idx = np.random.default_rng(0).choice(len(X), min(len(X), args.max_train), replace=False)
-        model = NlosBiasModel(fs, make_estimator(), meta={"trained_on": report["dataset"], "cv": res["hgb"]})
+        # LOS power-gap baseline of the training radio: a deployment shifts its own
+        # gaps by (this - its LOS baseline) so the model sees them on this scale.
+        los_gap = round(float(np.median(samples.power_dif[samples.nlos == 0])), 3)
+        model = NlosBiasModel(fs, make_estimator(), meta={"trained_on": report["dataset"], "cv": res["hgb"],
+                                                          "los_gap_db": los_gap})
         model.fit(X[idx], samples.bias[idx]).save(args.out / f"nlos_bias_{fs}.joblib")
 
     args.out.mkdir(parents=True, exist_ok=True)

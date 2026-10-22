@@ -54,7 +54,14 @@ source .venv/bin/activate     # from the repo root (Windows: .venv\Scripts\activ
 cd anchor-source
 python main.py                # simulated anchors
 ```
-Expect a line like: `[anchor-source] site='Demo Warehouse — Floor 1' source='sim' tags=3 anchors=4`.
+Expect lines like `[gateway] map='Demo Warehouse — Floor 1' ... source='sim' tags=3 anchors=5` and
+`[gateway] NLOS handling: learned bias model (nlos_bias_pd.joblib)`. If the second line says
+`power-gap rule (fallback: ...)`, the AI model could not be loaded (e.g. scikit-learn missing);
+tracking still works with the older rule. Set `"nlosModel": "rule"` under `ranging` in a map to
+turn the AI correction off for that map.
+
+**Running on the Raspberry Pi as the server, and connecting real anchors:** see
+[`PI_SETUP.md`](PI_SETUP.md).
 
 ### Switching to real hardware later
 No code changes downstream — just run the hardware source instead:
