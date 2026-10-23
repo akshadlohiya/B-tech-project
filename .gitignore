@@ -10,8 +10,17 @@ config/secrets.*
 **/api_key*
 **/api-key*
 
+# ── SQLite Database ───────────────────────────────────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
 # ── Python ────────────────────────────────────────────────────────────────────
 .venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 *.pyd
