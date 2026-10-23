@@ -36,7 +36,7 @@ except ImportError:
     from scp import SCPClient
 
 # Default Raspberry Pi configuration
-DEFAULT_HOSTS = ["192.168.1.40", "akshad.local", "akshad"]
+DEFAULT_HOSTS = ["10.158.134.90", "192.168.1.40", "akshad.local", "akshad"]
 SSH_USER = "akshad"
 SSH_PASS = "Maths@15"
 SSH_PORT = 22
