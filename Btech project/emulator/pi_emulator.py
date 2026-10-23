@@ -2,6 +2,9 @@ import socketio
 import time
 import math
 import random
+import sys
+import os
+import argparse
 sio = socketio.Client()
 BASE_LAT = 43.8615
 BASE_LON = -78.9469
@@ -34,13 +37,15 @@ def connect():
 @sio.event
 def disconnect():
 	print("Disconnected from the WebSocket Hub.")
-def start_simulation():
-	url = "http://localhost:3000"
+def start_simulation(server_url=None):
+	url = server_url or os.environ.get("BACKEND_URL") or "http://localhost:3000"
+	print(f"Connecting to WebSocket Hub at: {url} ...")
 	while True:
 		try:
 			sio.connect(url)
 			break
 		except Exception as e:
+			print(f"Waiting for backend at {url}... ({e})")
 			time.sleep(2)
 	while True:
 		try:
@@ -84,4 +89,7 @@ def start_simulation():
 			print(f"Error in loop: {e}")
 			time.sleep(1)
 if __name__ == "__main__":
-	start_simulation()
+	parser = argparse.ArgumentParser(description="UWB RTLS Multi-Tag Simulator")
+	parser.add_argument("--server", "-s", default=None, help="Backend WebSocket server URL (e.g. http://192.168.1.50:3000)")
+	args = parser.parse_args()
+	start_simulation(args.server)
