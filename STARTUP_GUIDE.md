@@ -91,11 +91,15 @@ Library**:
 - **🔗 Share** copies a link like `…?map=KEY`; anyone with the key + server can
   watch that map's live tracking.
 
-### Running the gateway for a specific map
-The gateway simulates/solves **one** map (default `demo`). To run it for another:
+### Running the gateway for specific maps
+By default the gateway simulates/solves **every** map in the library at once, one thread per
+map. Maps you create or delete in the dashboard start/stop automatically, with no restart.
+To run only some maps:
 ```bash
-MAP=<mapKey> python main.py
+MAP=<mapKey> python main.py          # one map
+MAP=demo,<mapKey> python main.py     # a comma-separated list
 ```
+Maps registered by the TDOA streamer below are skipped. That streamer feeds them itself.
 
 ---
 

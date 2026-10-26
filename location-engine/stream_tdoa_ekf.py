@@ -120,6 +120,8 @@ def register_map(backend_url: str, site: dict, map_key: str) -> None:
     import requests
     site = dict(site)
     site["key"] = map_key
+    # this streamer feeds the map, so the range gateway (MAP=all) leaves it alone
+    site["meta"] = {**site.get("meta", {}), "producer": "tdoa-ekf"}
     r = requests.put(f"{backend_url}/api/maps/{map_key}", json=site, timeout=5)
     r.raise_for_status()
     print(f"[stream] registered map '{map_key}' ({len(site['anchors'])} anchors) — "
