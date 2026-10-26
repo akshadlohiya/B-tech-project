@@ -82,10 +82,11 @@ project at `~/B-tech-project`, Raspberry Pi OS (Debian 13, aarch64), Python 3.13
    - Stock Makerfabs AT firmware reports over **USB serial**, not UDP. Plug the board into the
      Pi and add a serial reader to `hardware_source.py`. Capture a few lines of its output first
      (`cat /dev/ttyUSB0` or `screen /dev/ttyUSB0 115200`).
-7. **Fix anchor dropout before relying on live tracking.** `hardware_source.py` releases a
-   reading only once *every* anchor in the map has reported for that tag. One blocked or silent
-   anchor stalls the tag, or mixes ranges from different cycles. Change it to release once
-   ≥ 3 anchors have reported and a short wait (~100 ms) has passed.
+7. **Anchor dropout is handled** (fixed 2026-10-22). The gateway releases a tag's reading once
+   every anchor has reported, or 80% of one ranging period (160 ms at 5 Hz) after the cycle's
+   first packet if at least 3 anchors have reported. One blocked or silent anchor no longer freezes
+   the tag. Cycles with fewer than 3 anchors are dropped, not mixed into the next one.
+   `ranging.updateRateHz` in the map must match the anchors' real rate.
 8. **Measure and enter the anchor positions.** Mount the anchors, measure each one's position
    in metres (origin at the floor centre, x = east, y = height, z = north), and enter them in the
    viewer's **✎ Edit** for the map the gateway runs (`MAP=<key>`, default `demo`). Anchor and tag
@@ -118,6 +119,6 @@ T1 should appear in the viewer. If it does, the whole Pi chain works and only th
 | Gateway prints `hub not up yet` | Backend not running: `sudo systemctl restart rtls-server` |
 | Gateway silent, no tags | Normal until packets arrive. Check `sudo tcpdump -n udp port 9000` on the Pi. |
 | `Address already in use` (port 9000) | A gateway is already running: `pgrep -af main.py`, or `systemctl status rtls-gateway` |
-| Tags freeze when someone walks by | Anchor dropout (step 7) |
+| Tag freezes or updates rarely | Fewer than 3 anchors are reaching the Pi each cycle (`tcpdump`), or `updateRateHz` in the map is much faster than the anchors really range |
 | Positions offset by a constant | Anchor coordinates (step 8) or antenna delay (step 10) |
 | Viewer only works on the Pi | Missing `npm run dev -- --host`, or Pi code older than the api.js fix |

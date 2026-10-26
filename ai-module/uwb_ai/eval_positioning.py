@@ -58,7 +58,7 @@ def split_trials(s, rng) -> list:
     return test_trials
 
 
-def run(n_trials: int = 2000, seed: int = 0, s=None) -> dict:
+def run(n_trials: int = 2000, seed: int = 0, s=None, keep_errors: bool = False) -> dict:
     s = load_link_samples() if s is None else s
     rng = np.random.default_rng(seed)
     is_test = np.isin(s.group, split_trials(s, rng))
@@ -96,8 +96,12 @@ def run(n_trials: int = 2000, seed: int = 0, s=None) -> dict:
         v = np.asarray(v)
         return {"rmse_m": round(float(np.sqrt(np.mean(v**2))), 4),
                 "p50_m": round(float(np.median(v)), 4), "p90_m": round(float(np.quantile(v, 0.9)), 4)}
-    return {"n_trials": n_trials, "overall": {m: summ(v) for m, v in errs.items()},
-            "by_material": {mat: {m: summ(v)["rmse_m"] for m, v in d.items()} for mat, d in per_mat.items()}}
+    out = {"n_trials": n_trials, "overall": {m: summ(v) for m, v in errs.items()},
+           "by_material": {mat: {m: summ(v)["rmse_m"] for m, v in d.items()} for mat, d in per_mat.items()}}
+    if keep_errors:   # raw per-trial errors, e.g. for CDF plots
+        out["errors"] = errs
+        out["errors_by_material"] = per_mat
+    return out
 
 
 def run_seeds(n_seeds: int = 10, n_trials: int = 2000) -> dict:

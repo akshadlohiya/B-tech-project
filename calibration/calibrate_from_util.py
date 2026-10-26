@@ -53,7 +53,7 @@ from typing import Dict, List, Optional, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DATASET = os.path.normpath(os.path.join(
-    HERE, "..", "..", "DOCS", "datasets", "util-uwb-dataset",
+    HERE, "..", "DOCS", "datasets", "util-uwb-dataset",
     "dataset", "identification-dataset"))
 SITE_JSON = os.path.normpath(os.path.join(HERE, "..", "config", "site.json"))
 

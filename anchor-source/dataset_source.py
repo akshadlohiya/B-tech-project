@@ -98,7 +98,9 @@ class DatasetTdoaSource:
         pose_p: List[Vec3] = []
         last_pt = None
         with open(self.csv_path) as f:
-            for row in csv.DictReader(f):
+            reader = csv.DictReader(f)
+            reader.fieldnames = [n.strip() for n in reader.fieldnames or []]   # UTIL header has a leading space
+            for row in reader:
                 try:
                     ta = float(row["t_tdoa"])
                     ia, ib = int(float(row["idA"])), int(float(row["idB"]))
@@ -178,7 +180,7 @@ def build_util_site(anchors: Dict[int, Vec3], name: str = "UTIL Flight Arena",
 def default_paths(const: str = "const1", trial: str = "trial1", scheme: str = "tdoa2"):
     here = os.path.dirname(os.path.abspath(__file__))
     base = os.path.normpath(os.path.join(
-        here, "..", "..", "DOCS", "datasets", "util-uwb-dataset", "dataset", "flight-dataset"))
+        here, "..", "DOCS", "datasets", "util-uwb-dataset", "dataset", "flight-dataset"))
     csv_path = os.path.join(base, "csv-data", const, f"{const}-{trial}-{scheme}.csv")
     survey = os.path.join(base, "survey-results", f"anchor_{const}_survey.txt")
     return csv_path, survey
