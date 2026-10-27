@@ -92,6 +92,16 @@ Open the printed URL (usually `http://localhost:5173`). You land on the **Map Li
   (direct URL: `http://localhost:5173/?mode=classic`).
 - **🔗 Share** copies a link like `…?map=KEY` for sharing.
 
+### Running the gateway for specific maps
+By default the gateway simulates/solves **every** map in the library at once, one thread per
+map. Maps you create or delete in the dashboard start/stop automatically, with no restart.
+To run only some maps:
+```bash
+MAP=<mapKey> python main.py          # one map
+MAP=demo,<mapKey> python main.py     # a comma-separated list
+```
+Maps registered by the TDOA streamer below are skipped. That streamer feeds them itself.
+
 ---
 
 ## Step 4 — Raspberry Pi 4 Edge Automation & Wi-Fi Tracking

@@ -51,6 +51,7 @@ function listMaps() {
       tags: (m.tags || []).length,
       floor: m.floor?.label || '',
       updatedAt: m.meta?.updatedAt || null,
+      producer: m.meta?.producer || null,   // set when something other than the gateway feeds it
     };
   }).filter((m) => m.key);
 }
@@ -104,6 +105,7 @@ app.post('/api/maps', (req, res) => {
   m.key = key;
   writeMap(key, m);
   console.log(`Created map ${key} ("${m.meta.name}")`);
+  io.emit('maps_changed', { key, at: Date.now() });   // gateway starts running it
   res.json({ key, map: m });
 });
 
@@ -117,10 +119,12 @@ app.put('/api/maps/:key', (req, res) => {
   const key = req.params.key;
   const m = req.body;
   if (!validMap(m)) return res.status(400).json({ error: 'invalid map (schema/floor/anchors/walls/zones/tags required)' });
+  const isNew = !fs.existsSync(mapPath(key));
   m.key = key;
   m.meta = { ...(m.meta || {}), updatedAt: Date.now() };
   writeMap(key, m);
   io.to(`map:${key}`).emit('map_updated', { key, at: Date.now() });
+  if (isNew) io.emit('maps_changed', { key, at: Date.now() });
   console.log(`Map ${key} saved`);
   res.json({ ok: true });
 });
@@ -129,6 +133,7 @@ app.delete('/api/maps/:key', (req, res) => {
   const key = req.params.key;
   if (key === 'demo') return res.status(400).json({ error: 'cannot delete the demo map' });
   try { fs.unlinkSync(mapPath(key)); } catch { /* ignore */ }
+  io.emit('maps_changed', { key, at: Date.now() });   // gateway stops running it
   res.json({ ok: true });
 });
 
