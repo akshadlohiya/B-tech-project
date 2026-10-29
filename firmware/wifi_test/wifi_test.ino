@@ -1,97 +1,102 @@
 // Wi-Fi path test: ESP32 only, no DW1000 needed.
 //
-// Pretends to be tag T1 walking a 1.5 m circle inside three anchors (A1, A2, A3).
-// Sends the same UDP/JSON packets as uwb_tag, so the hotspot -> Pi gateway -> viewer
+// Pretends to be tag T1 walking a 1.5 m circle inside three anchors and sends
+// the same UDP/JSON packets as uwb_tag, so the hotspot -> Pi gateway -> viewer
 // chain can be proven before any radio is wired. In the viewer's map, put
-// A1 (-3, 2.4, -3), A2 (3, 2.4, -3), A3 (0, 2.4, 3) and tag T1.
+// A1, A2, A3 at the ANCHORS positions below and add tag T1.
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <math.h>
 
 #if __has_include("secrets.h")
 #include "secrets.h"
 #else
-#include "secrets.example.h"
+#error "Copy secrets.example.h to secrets.h and fill in your hotspot SSID and password"
 #endif
 
-#define LED_PIN 2   // Built-in blue LED on most ESP32 DevKits
+#define UDP_PORT  9000
+#define BEACON_PORT 9001       // gateway announces itself here
+#define LED_PIN   2            // onboard blue LED on most DevKits
+
+struct Anchor { const char *id; float x, y, z; };
+const Anchor ANCHORS[] = {     // metres: x = east, y = height, z = north
+  {"A1", -3.0, 2.4, -3.0},
+  {"A2",  3.0, 2.4, -3.0},
+  {"A3",  0.0, 2.4,  3.0},
+};
+const float TAG_H = 0.6;       // matches the map's default assumedTagHeightM
+const float RADIUS_M = 1.5;
+const float LAP_S = 20.0;      // one circle every 20 s
+const uint32_t CYCLE_MS = 200; // 5 Hz, the map's default updateRateHz
+
+#define LOG_PREFIX "[test]"
 
 WiFiUDP udp;
-const int UDP_PORT = 9000;
+IPAddress target;
+WiFiUDP beacon;
 
-// Anchor positions matching the map: A1=(-3, 2.4, -3), A2=(3, 2.4, -3), A3=(0, 2.4, 3)
-const float ANCHORS[3][3] = {
-  {-3.0f, 2.4f, -3.0f},
-  { 3.0f, 2.4f, -3.0f},
-  { 0.0f, 2.4f,  3.0f}
-};
-const char* ANCHOR_IDS[3] = {"A1", "A2", "A3"};
+// Where packets go. The gateway beacons {"rtls":"gateway","port":9000} to port 9001 every 2 s
+// and we send to whoever beacons, so the Pi's hotspot IP can change freely (phone hotspots
+// hand out new addresses and block mDNS). Until a beacon arrives: PI_IP, else broadcast.
+void startTarget() {
+#ifdef PI_IP
+  target.fromString(PI_IP);
+  Serial.printf("%s sending to %s:%d (PI_IP, until a gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+#else
+  target = WiFi.broadcastIP();
+  Serial.printf("%s sending to %s:%d (broadcast, until a gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+#endif
+  beacon.begin(BEACON_PORT);
+}
 
-float angle = 0.0f;
-const float RADIUS = 1.5f;
-const float TAG_Y = 1.0f;
-
-void connectWiFi() {
-  Serial.printf("\nConnecting to Wi-Fi SSID '%s'...", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+void checkBeacon() {
+  if (!beacon.parsePacket()) return;
+  char buf[64];
+  int n = beacon.read(buf, sizeof buf - 1);
+  buf[n > 0 ? n : 0] = 0;
+  IPAddress from = beacon.remoteIP();
+  if (strstr(buf, "\"rtls\"") && strstr(buf, "\"gateway\"") && from != target) {   // any JSON spacing
+    target = from;
+    Serial.printf("%s sending to %s:%d (gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
   }
-  Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
 }
 
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
-  connectWiFi();
-  udp.begin(UDP_PORT);
-  Serial.println("wifi_test running: simulating T1 circling at 1.5m radius...");
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.printf("[test] connecting to %s", WIFI_SSID);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.printf("\n%s ip %s\n", LOG_PREFIX, WiFi.localIP().toString().c_str());
+  startTarget();
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-  }
-
-  // T1 circular trajectory in x-z plane
-  float tx = RADIUS * cos(angle);
-  float ty = TAG_Y;
-  float tz = RADIUS * sin(angle);
-  angle += 0.1f;
-  if (angle > 2.0f * M_PI) angle -= 2.0f * M_PI;
-
-  IPAddress target;
-#ifdef PI_IP
-  target.fromString(PI_IP);
-#else
-  target = WiFi.broadcastIP();
-#endif
+  checkBeacon();
+  float a = 2 * PI * (millis() / 1000.0f) / LAP_S;
+  float tx = RADIUS_M * cosf(a), tz = RADIUS_M * sinf(a);
 
   digitalWrite(LED_PIN, HIGH);
-
-  // Send fake range reading for each anchor A1, A2, A3
-  for (int i = 0; i < 3; i++) {
-    float dx = tx - ANCHORS[i][0];
-    float dy = ty - ANCHORS[i][1];
-    float dz = tz - ANCHORS[i][2];
-    float dist = sqrt(dx*dx + dy*dy + dz*dz);
-
-    char buf[128];
-    snprintf(buf, sizeof(buf),
-             "{\"tag\":\"T1\",\"anchor\":\"%s\",\"range\":%.2f,\"rxPower\":-80.0,\"fpPower\":-83.0}",
-             ANCHOR_IDS[i], dist);
-
+  for (const Anchor &an : ANCHORS) {
+    float dx = tx - an.x, dy = TAG_H - an.y, dz = tz - an.z;
+    float range = sqrtf(dx * dx + dy * dy + dz * dz) + random(-50, 51) / 1000.0f;   // +-5 cm noise
+    char pkt[128];
+    snprintf(pkt, sizeof pkt,
+             "{\"tag\":\"T1\",\"anchor\":\"%s\",\"range\":%.3f,\"rxPower\":-80.0,\"fpPower\":-83.0}",
+             an.id, range);
     udp.beginPacket(target, UDP_PORT);
-    udp.write((const uint8_t*)buf, strlen(buf));
+    udp.write((const uint8_t *)pkt, strlen(pkt));
     udp.endPacket();
-
-    Serial.printf("[TX] -> %s: %s\n", target.toString().c_str(), buf);
-    delay(20);
+    Serial.println(pkt);
+    delay(10);                 // real anchors answer one after another
   }
-
   digitalWrite(LED_PIN, LOW);
-  delay(140); // ~5 Hz update cycle
+
+  if (WiFi.status() != WL_CONNECTED) WiFi.reconnect();
+  delay(CYCLE_MS - 3 * 10);
 }

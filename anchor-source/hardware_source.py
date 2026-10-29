@@ -27,6 +27,7 @@ import json
 import os
 import socket
 import sys
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -44,6 +45,12 @@ LISTEN_HOST = os.environ.get("UWB_UDP_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("UWB_UDP_PORT", "9000"))
 MIN_ANCHORS = 3          # fewest ranges the solver can use for a 2D fix
 WINDOW_FRACTION = 0.8    # cycle window = this share of one ranging period
+
+# The tag learns where to send from this beacon, so the gateway's IP can change (phone
+# hotspots hand out new addresses and block mDNS). Broadcast loss doesn't matter: it repeats.
+BEACON_ADDR = os.environ.get("UWB_BEACON_ADDR", "255.255.255.255")
+BEACON_PORT = int(os.environ.get("UWB_BEACON_PORT", "9001"))   # 0 disables
+BEACON_INTERVAL_S = 2.0
 
 
 class CycleAssembler:
@@ -94,11 +101,40 @@ class HardwareAnchorSource:
         self.assembler = CycleAssembler(len(self.anchor_ids), WINDOW_FRACTION / rate_hz)
         self._seq = defaultdict(int)
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.bind((LISTEN_HOST, LISTEN_PORT))
+        try:
+            self._sock.bind((LISTEN_HOST, LISTEN_PORT))
+        except OSError as exc:
+            if getattr(exc, "errno", None) in (98, 10048, 48):  # EADDRINUSE (Linux/Win/Mac)
+                print(
+                    f"\n[gateway ERROR] Port {LISTEN_PORT} is already in use!\n"
+                    f"A gateway is already running (e.g. rtls-gateway.service).\n"
+                    f"To free port {LISTEN_PORT}, run:\n"
+                    f"    sudo systemctl stop rtls-gateway\n"
+                    f"Or kill any running process on port {LISTEN_PORT}:\n"
+                    f"    pkill -f 'anchor-source/main.py' || sudo fuser -k {LISTEN_PORT}/udp\n"
+                )
+            raise
         self._sock.settimeout(self.assembler.window_s / 4)   # wake up to release timed-out cycles
+        self._stop = threading.Event()
+        if BEACON_PORT:
+            threading.Thread(target=self._beacon, daemon=True).start()
+
+    def _beacon(self) -> None:
+        """Announce `{"rtls":"gateway","port":9000}` until closed; the tag replies to the sender."""
+        tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        tx.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        msg = json.dumps({"rtls": "gateway", "port": LISTEN_PORT}, separators=(",", ":")).encode()
+        while not self._stop.is_set():
+            try:
+                tx.sendto(msg, (BEACON_ADDR, BEACON_PORT))
+            except OSError:
+                pass   # no network yet (Wi-Fi still joining): try again next tick
+            self._stop.wait(BEACON_INTERVAL_S)
+        tx.close()
 
     def close(self) -> None:
         """Free the UDP port so a rebuilt source (map reload) can bind it again."""
+        self._stop.set()
         self._sock.close()
 
     def _parse_packet(self, data: bytes) -> Optional[Tuple[str, AnchorRange]]:
