@@ -116,6 +116,24 @@ def test_udp_source_keeps_tracking_with_a_silent_anchor(monkeypatch):
         assert r.source == "hardware"
 
 
+def test_closed_source_frees_the_port_for_a_map_reload(monkeypatch):
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    monkeypatch.setattr(hardware_source, "LISTEN_HOST", "127.0.0.1")
+    monkeypatch.setattr(hardware_source, "LISTEN_PORT", port)
+    site = {"anchors": [{"id": a} for a in ANCHORS[:3]], "ranging": {"updateRateHz": 5}}
+    old = HardwareAnchorSource(site)
+    try:
+        HardwareAnchorSource(site)
+        assert False, "expected OSError when binding port twice"
+    except OSError:
+        pass
+    old.close()
+    HardwareAnchorSource(site).close()    # rebuilt source binds the same port
+
+
 if __name__ == "__main__":
     test_full_cycle_released_immediately()
     test_silent_anchor_does_not_freeze_the_tag()
@@ -128,5 +146,5 @@ if __name__ == "__main__":
         def setattr(self, obj, name, value):
             setattr(obj, name, value)
     test_udp_source_keeps_tracking_with_a_silent_anchor(_MockMonkeyPatch())
+    test_closed_source_frees_the_port_for_a_map_reload(_MockMonkeyPatch())
     print("All test_hardware_source tests passed!")
-

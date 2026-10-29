@@ -29,6 +29,9 @@ class AnchorSource(ABC):
         """Yield (reading, ground_truth_or_None) forever, paced in real time."""
         raise NotImplementedError
 
+    def close(self) -> None:
+        """Release held resources (sockets) before the source is replaced."""
+
 
 def make_source(kind: str, site: Dict[str, Any]) -> AnchorSource:
     kind = (kind or "sim").lower()

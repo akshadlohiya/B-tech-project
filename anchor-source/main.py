@@ -131,6 +131,7 @@ class MapRunner(threading.Thread):
             while not self.stop_event.is_set():
                 if self.reload_requested:
                     self.reload_requested = False
+                    source.close()   # hardware: free UDP 9000 before the new source binds it
                     built = self._build()
                     if built is None:
                         return
@@ -159,6 +160,10 @@ class MapRunner(threading.Thread):
         except Exception as exc:   # one bad map must not take the others down
             print(f"[gateway] map '{self.key}' stopped: {exc!r}")
         finally:
+            try:
+                source.close()
+            except Exception:
+                pass
             with _runners_lock:
                 if _runners.get(self.key) is self:
                     del _runners[self.key]

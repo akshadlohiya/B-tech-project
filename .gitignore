@@ -105,3 +105,6 @@ graphify-out/
 
 # UTIL dataset (~1.8 GB; re-download via DOCS/datasets/util-uwb-dataset/setupscript.bash)
 DOCS/datasets/
+
+# ── ESP32 firmware Wi-Fi credentials ──────────────────────────────────────────
+firmware/**/secrets.h
