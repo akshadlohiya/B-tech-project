@@ -111,3 +111,18 @@ def test_udp_source_keeps_tracking_with_a_silent_anchor(monkeypatch):
         assert sorted(x.anchor_id for x in r.ranges) == ANCHORS[:4]
         assert {x.range_m for x in r.ranges} == {5.0 + cycle}
         assert r.source == "hardware"
+
+
+def test_closed_source_frees_the_port_for_a_map_reload(monkeypatch):
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    monkeypatch.setattr(hardware_source, "LISTEN_HOST", "127.0.0.1")
+    monkeypatch.setattr(hardware_source, "LISTEN_PORT", port)
+    site = {"anchors": [{"id": a} for a in ANCHORS[:3]], "ranging": {"updateRateHz": 5}}
+    old = HardwareAnchorSource(site)
+    with pytest.raises(OSError):          # without close() the reload cannot bind
+        HardwareAnchorSource(site)
+    old.close()
+    HardwareAnchorSource(site).close()    # rebuilt source binds the same port

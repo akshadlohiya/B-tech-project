@@ -97,6 +97,10 @@ class HardwareAnchorSource:
         self._sock.bind((LISTEN_HOST, LISTEN_PORT))
         self._sock.settimeout(self.assembler.window_s / 4)   # wake up to release timed-out cycles
 
+    def close(self) -> None:
+        """Free the UDP port so a rebuilt source (map reload) can bind it again."""
+        self._sock.close()
+
     def _parse_packet(self, data: bytes) -> Optional[Tuple[str, AnchorRange]]:
         """Translate one node datagram into (tag_id, AnchorRange).
 

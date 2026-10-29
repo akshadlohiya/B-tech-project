@@ -18,6 +18,7 @@ project at `~/B-tech-project`, Raspberry Pi OS (Debian 13, aarch64), Python 3.13
 - [x] Gateway and viewer set up (steps 4–5 below)
 - [ ] Pi code updated past `534791f` (needs the AI integration and the `frontend/src/api.js`
       fix; without the fix the viewer only works in a browser on the Pi itself)
+- [x] Firmware written (`firmware/`), not yet flashed
 - [ ] Anchors connected (step 6 onwards)
 
 ## Server setup (done once)
@@ -70,35 +71,59 @@ project at `~/B-tech-project`, Raspberry Pi OS (Debian 13, aarch64), Python 3.13
    ```
    Open `http://<pi-ip>:5173` from any device on the same network.
 
-## Anchor integration (when the anchors arrive)
+## Anchor integration (ESP32 + DW1000, phone hotspot)
 
-6. **Check how the nodes report.** The gateway expects each node to send **one UDP datagram
-   per range** to `<pi-ip>:9000`:
-   ```json
-   {"tag":"T1","anchor":"A1","range":9.41,"rxPower":-83.2,"fpPower":-86.1}
+Hardware: 4 × ESP32 + DW1000 (the README's "MaUWB_DW3000" is stale). They form **3 anchors (A1–A3)
+and 1 tag (T1)**. Flash them first by following `firmware/README.md`. The tag sends one UDP datagram per
+range to the hotspot's **broadcast** address on port 9000, so the Pi's IP never goes into firmware:
+```json
+{"tag":"T1","anchor":"A1","range":2.41,"rxPower":-83.2,"fpPower":-86.1}
+```
+The anchors only need USB power. Only the tag and the Pi use Wi-Fi.
+
+6. **Put the Pi on the phone hotspot** (same one as in the tag's `secrets.h`):
+   ```bash
+   sudo nmcli dev wifi connect "<SSID>" password "<PASSWORD>"
+   hostname -I          # the Pi's new address; the phone's hotspot page shows it too
    ```
-   - Custom ESP32 firmware sending this JSON: nothing to change.
-   - Different field names: edit only `anchor-source/hardware_source.py::_parse_packet`.
-   - Stock Makerfabs AT firmware reports over **USB serial**, not UDP. Plug the board into the
-     Pi and add a serial reader to `hardware_source.py`. Capture a few lines of its output first
-     (`cat /dev/ttyUSB0` or `screen /dev/ttyUSB0 115200`).
-7. **Anchor dropout is handled** (fixed 2026-10-22). The gateway releases a tag's reading once
-   every anchor has reported, or 80% of one ranging period (160 ms at 5 Hz) after the cycle's
-   first packet if at least 3 anchors have reported. One blocked or silent anchor no longer freezes
-   the tag. Cycles with fewer than 3 anchors are dropped, not mixed into the next one.
-   `ranging.updateRateHz` in the map must match the anchors' real rate.
-8. **Measure and enter the anchor positions.** Mount the anchors, measure each one's position
-   in metres (origin at the floor centre, x = east, y = height, z = north), and enter them in the
-   viewer's **✎ Edit** for the map the gateway runs (`MAP=<key>`, default `demo`). Anchor and tag
-   IDs in the map must match the IDs the nodes send (`A1`…, `T1`…).
-9. **Calibrate the AI's power baseline.** With a tag in clear line of sight of all anchors, log
-   a minute of packets and take the median `rxPower - fpPower`. Put its negative in the map's
-   `ranging.power.fpToRxDeltaLosDbm` (a 9 dB gap → `-9`). The AI correction aligns to this value;
-   the default `-3` is a simulator placeholder. Until this is measured, or if positions look
-   worse, set `"nlosModel": "rule"` under `ranging` to use the plain power-gap rule.
-10. **Antenna delay.** Place the tag at a few known points and compare the measured range with the
-    tape-measured distance per anchor. A constant offset per anchor (typically 0.1–0.5 m) is
-    antenna delay. Calibrate it in the node firmware.
+   Your laptop joins the same hotspot to SSH in and to open the viewer.
+7. **Update and restart** (step 1–3 above): `git pull`, `pip install -r requirements.txt`,
+   `sudo systemctl restart rtls-server`.
+8. **Create the real map.** In the viewer, create a new map (e.g. "Lab") and note its key. In
+   **✎ Edit**, set the floor size, add anchors **A1, A2, A3** at their measured positions in metres
+   (origin at floor centre, x = east, y = height, z = north), and add tag **T1**. IDs must match the
+   firmware exactly. The editor does not expose ranging settings, so set them through the API.
+   Use the lowest rate in the tag's serial `rate Hz` line, and the height the tag will really be carried at:
+   ```bash
+   KEY=<map-key> python3 -c "
+   import json,os,urllib.request as u; url='http://localhost:3000/api/maps/'+os.environ['KEY']
+   m=json.load(u.urlopen(url)); r=m['ranging']
+   r['updateRateHz']=5; r['assumedTagHeightM']=1.0
+   u.urlopen(u.Request(url,json.dumps(m).encode(),{'Content-Type':'application/json'},method='PUT'))
+   print(r)"
+   ```
+9. **Run the gateway on that map:**
+   ```bash
+   SOURCE=hardware MAP=<map-key> .venv/bin/python anchor-source/main.py
+   ```
+   For the systemd service, add `Environment=MAP=<map-key>` to `rtls-gateway.service`. Editing the
+   map while the gateway runs reloads it live (the UDP port is released and re-bound; fixed 2026-10-29).
+10. **Confirm packets arrive:** `sudo tcpdump -n -A udp port 9000` should show T1's JSON. Then open
+    `http://<pi-ip>:5173/?map=<map-key>` and T1 should move with the tag.
+11. **Mount the anchors** about 2–2.5 m high in a wide triangle (not in a line) with a clear view of
+    the tracked area. Re-measure their positions and update them in **✎ Edit**.
+12. **Calibrate the AI's power baseline.** With the tag in clear line of sight of all anchors, log
+    a minute of packets and take the median `rxPower - fpPower`. Put its negative in the map's
+    `ranging.power.fpToRxDeltaLosDbm` (a 9 dB gap → `-9`) using the snippet in step 8. The default
+    `-3` is a simulator placeholder. Until this is measured, or if positions look worse, set
+    `ranging.nlosModel` to `"rule"`.
+13. **Check accuracy.** Stand the tag on 5+ tape-marked points and record the viewer's error.
+    A constant range offset per anchor means its `ANTENNA_DELAY` needs recalibrating in the
+    firmware. The map's `antennaDelayBiasM` only affects the simulator.
+
+**Anchor dropout.** The gateway releases a tag's reading once every anchor has reported, or
+80% of one ranging period after the cycle's first packet if at least 3 have. With exactly 3
+anchors, every cycle needs all 3. If one is blocked, the tag holds its last position.
 
 ## Testing without anchors
 From any machine on the network, send fake ranges (one entry per anchor in the map):
@@ -106,7 +131,7 @@ From any machine on the network, send fake ranges (one entry per anchor in the m
 python3 -c "
 import socket,json,time; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 for _ in range(50):
-    for a,r in [('A1',9.4),('A2',8.1),('A3',10.2),('A4',7.7),('A5',8.8)]:
+    for a,r in [('A1',3.1),('A2',4.2),('A3',3.6)]:
         s.sendto(json.dumps({'tag':'T1','anchor':a,'range':r,'rxPower':-80,'fpPower':-83}).encode(),('<pi-ip>',9000))
     time.sleep(0.2)"
 ```

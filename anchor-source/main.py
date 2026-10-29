@@ -118,6 +118,7 @@ def main() -> None:
         while True:
             if _reload_requested:
                 _reload_requested = False
+                source.close()   # hardware: free UDP 9000 before the new source binds it
                 source, engine, cycles = _build()
 
             reading, truth = next(cycles)
