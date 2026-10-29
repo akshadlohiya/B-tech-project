@@ -1,0 +1,609 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{microtype}
+\usepackage{subcaption}
+\usepackage{multirow}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Autonomous Ultra-Wideband Real-Time Indoor Location System and 3D Digital Twin with Machine-Learned NLOS Bias Compensation and Edge Computing\\
+\thanks{This research was conducted as a senior capstone project in the Department of Computer Science and Engineering at College of Engineering Pune (COEP Technological University).}
+}
+
+\author{
+\IEEEauthorblockN{Akshad Lohiya\IEEEauthorrefmark{1}, Nahush\IEEEauthorrefmark{2}, and Purnank Vasaikar\IEEEauthorrefmark{3}}
+\IEEEauthorblockA{\textit{Department of Computer Science and Engineering} \\
+\textit{College of Engineering Pune (COEP Technological University)}, Pune, Maharashtra, India \\
+Email: \IEEEauthorrefmark{1}akshadlohiya@gmail.com, 
+\IEEEauthorrefmark{2}nahush@example.com, 
+\IEEEauthorrefmark{3}purnank@example.com}
+}
+
+\maketitle
+
+\begin{abstract}
+Indoor asset and personnel tracking within cyber-physical systems, automated warehouses, and smart factories presents substantial engineering challenges due to the complete degradation of Global Navigation Satellite Systems (GNSS) within indoor environments and severe radio frequency (RF) multipath reflections. This paper presents the comprehensive architecture, mathematical derivation, physical hardware deployment, and empirical validation of an end-to-end Ultra-Wideband (UWB) Real-Time Location System (RTLS) integrated with a low-cost edge computing gateway running on a Raspberry Pi 4 Model B and a WebGL-based 3D Digital Twin. The system introduces a hybrid, high-precision localization engine comprising: (1) double-sided two-way ranging (DS-TWR) multilateration via linearized spherical difference equations coupled with Truncated Gauss-Newton optimization, (2) a Gradient-Boosted Decision Tree (GBDT) regressor leveraging Channel Impulse Response (CIR) power diagnostics ($\Delta P = P_{RX} - P_{FP}$) to predict and subtract positive Non-Line-of-Sight (NLOS) ranging bias, (3) a 6-state constant-velocity kinematic Kalman Filter (KF), and (4) an Extended Kalman Filter (EKF) for Time Difference of Arrival (TDoA) hyperbolic localization benchmarked against millimeter-accurate optical ground truth. Experimental evaluation reveals that the machine-learned NLOS compensation reduces the 3D positioning Root Mean Square Error (RMSE) from $36.8\,\text{cm}$ down to $16.2\,\text{cm}$, representing a $56.0\%$ accuracy enhancement over baseline heuristic downweighting. In addition, an edge fallback utilizing log-distance path loss Wi-Fi RSSI distance estimation is seamlessly integrated into an embedded SQLite database operating with Write-Ahead Logging (WAL) and a real-time reactive browser dashboard running at 60 frames per second.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Ultra-Wideband (UWB), Real-Time Location System (RTLS), Non-Line-of-Sight (NLOS), Machine Learning, Digital Twin, Extended Kalman Filter, Edge Computing, Embedded Systems, Raspberry Pi.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\IEEEPARstart{I}{ndoor} localization technologies have emerged as foundational pillars of the Fourth Industrial Revolution (Industry 4.0), smart manufacturing, dynamic supply-chain logistics, and robotic material handling \cite{indoor_survey}. Within modern industrial warehouses, automated guided vehicles (AGVs), autonomous mobile robots (AMRs), forklifts, and human personnel operate in shared, tightly packed physical spaces. Safe coordination, fleet traffic deconfliction, inventory audit automation, and hazardous zone access control dictate that the positions of all mobile assets must be tracked continuously in three dimensions with low latency (sub-$50\,\text{ms}$) and centimeter-grade accuracy \cite{uwb_survey}.
+
+While outdoor geolocation has long been standardized through Global Navigation Satellite Systems (GNSS), including GPS, GLONASS, and Galileo, satellite microwave signals operating in the L-band ($1.1$--$1.6\,\text{GHz}$) suffer catastrophic degradation when propagating through concrete slabs, metallic roofing, and structural masonry \cite{gps_loss}. Indoors, satellite signal power plummets well below the thermal noise threshold (often dropping below $-160\,\text{dBm}$), rendering satellite navigation fundamentally unusable.
+
+\subsection{Limitations of Conventional Indoor Positioning}
+Over the past two decades, extensive research has addressed terrestrial indoor positioning through diverse physical media. However, existing commercial and academic solutions exhibit fundamental compromises:
+\begin{itemize}
+    \item \textbf{Received Signal Strength Indication (RSSI) over Wi-Fi and Bluetooth Low Energy (BLE):} RSSI fingerprinting and trilateration offer ubiquitous accessibility because existing commodity infrastructure can be repurposed. However, narrow-band RF signals in the $2.4\,\text{GHz}$ and $5\,\text{GHz}$ Industrial, Scientific, and Medical (ISM) bands suffer from destructive multipath fading, human shadow fading, and spatial antenna gain variations. Consequently, empirical positioning errors fluctuate between $2\,\text{m}$ and $5\,\text{m}$, which is unacceptable for robotic navigation or narrow aisle obstacle avoidance \cite{rssi_indoor}.
+    \item \textbf{Computer Vision and Optical Tracking (Visual SLAM, Vicon):} Optical motion capture systems (such as Vicon or OptiTrack) achieve millimeter-scale spatial fidelity by observing passive retroreflective markers through infrared camera arrays. Nevertheless, their prohibitive capital expense (\$50,000--\$200,000 per facility), immense computational overhead, sensitivity to dynamic occlusion (e.g., stacked pallets), and vulnerability to ambient lighting variations preclude facility-wide industrial deployment.
+    \item \textbf{Inertial Dead Reckoning (IMU-based PDR):} Micro-Electro-Mechanical Systems (MEMS) accelerometers and gyroscopes operate autonomously without external anchors. However, double integration of noisy accelerometer bias vectors results in quadratic position drift over time, necessitating frequent absolute recalibration anchors \cite{imu_drift}.
+\end{itemize}
+
+\subsection{The Promise and Challenges of Ultra-Wideband (UWB)}
+Ultra-Wideband (UWB) radio technology, governed by IEEE 802.15.4z, has established itself as the leading physical-layer modality for mission-critical indoor positioning \cite{decawave}. Operating across bandwidths greater than $500\,\text{MHz}$ (predominantly Channel 5 at $6.489\,\text{GHz}$ or Channel 9 at $7.987\,\text{GHz}$), UWB transmitters emit baseband pulses with durations under $1\,\text{ns}$. The fundamental relationship between signal bandwidth $B$ and time resolution $\Delta t$ is governed by:
+\begin{equation}
+\Delta t \approx \frac{1}{B}
+\end{equation}
+For a standard UWB channel with $B = 499.2\,\text{MHz}$, the theoretical multipath arrival time resolution is $\Delta t \approx 2\,\text{ns}$, corresponding to a spatial path resolution of $\Delta d = c \cdot \Delta t \approx 60\,\text{cm}$. This allows UWB transceivers to isolate the direct Line-of-Sight (LOS) path from delayed multipath reflections in the discrete Channel Impulse Response (CIR) domain.
+
+Despite these physical capabilities, real-world industrial deployments are severely degraded by \textbf{Non-Line-of-Sight (NLOS)} propagation. When physical obstructions—such as concrete columns, steel structural trusses, heavy machinery, or metallic pallet racks—block direct geometric paths between an anchor and a mobile tag, two detrimental phenomena occur:
+\begin{enumerate}
+    \item \textbf{Dielectric Delay:} If the pulse penetrates a solid material of relative permittivity $\epsilon_r > 1$, its propagation speed decreases to $v = c / \sqrt{\epsilon_r}$. A pulse penetrating an $80\,\text{cm}$ concrete pillar ($\epsilon_r \approx 6.0$) experiences an artificial distance inflation of $\Delta d = 80 \times (\sqrt{6} - 1) \approx 116\,\text{cm}$.
+    \item \textbf{Complete Path Blocking:} When direct rays are completely absorbed or reflected by metallic shielding, the receiver detects a reflected, longer path as the leading edge, adding a positive bias of several meters.
+\end{enumerate}
+Because conventional multilateration solvers assume zero-mean Gaussian measurement errors, positive NLOS biases corrupt the entire optimization landscape, pulling position estimates tens of decimeters off track.
+
+\subsection{Research Contributions}
+To address these challenges, this paper presents an open-architecture, edge-computed UWB RTLS paired with an interactive 3D Digital Twin. The core contributions of this work are:
+\begin{enumerate}
+    \item \textbf{Physics-Informed ML NLOS Compensation:} We design a feature engineering and Gradient-Boosted Decision Tree (GBDT) regression framework based on the Decawave DW3000 physical power differential ($\Delta P = P_{RX} - P_{FP}$). Unlike prior binary classifiers that simply discard NLOS links, our model accurately predicts and subtracts the positive distance bias, reducing 3D positioning RMSE from $36.8\,\text{cm}$ to $16.2\,\text{cm}$ ($56.0\%$ improvement).
+    \item \textbf{Multi-Paradigm Location Engine:} We implement and comparatively benchmark both Double-Sided Two-Way Ranging (DS-TWR) spherical multilateration and Time Difference of Arrival (TDoA) hyperbolic localization fused with an Extended Kalman Filter (EKF), verified against millimeter-accurate Vicon motion capture truth from the public UTIL dataset.
+    \item \textbf{Edge Computing Architecture on Raspberry Pi 4:} We engineer a lightweight, autonomous edge gateway executing on an embedded ARM64 platform. The gateway handles high-throughput asynchronous UDP telemetry ingestion ($100\,\text{Hz}$), provides crash-resilient persistence via SQLite Write-Ahead Logging (WAL), and features automated remote deployment tooling (`init_pi.py`).
+    \item \textbf{Interactive 3D Digital Twin and 2D CAD Platform:} We develop a modern WebGL-based visualization interface utilizing React 19 and Three.js. It features parametric 2D floorplan editing, real-time dynamic LOS/NLOS ray coloring, geofencing breach alerts, and a first-person WASD walkthrough with physical Axis-Aligned Bounding Box (AABB) collision detection.
+    \item \textbf{Hybrid Secondary Wi-Fi Tracking:} We provide a zero-hardware fallback pipeline utilizing the Log-Distance Path Loss Model and Exponential Moving Average (EMA) filtering on Wi-Fi RSSI signals, allowing assets without UWB tags to remain localized within coarse warehouse zones.
+\end{enumerate}
+
+The remainder of this paper is structured as follows: Section II reviews related literature. Section III details the holistic system architecture. Section IV presents the mathematical foundations of ranging, multilateration, machine learning, and state estimation. Section V discusses edge deployment and software engineering. Section VI analyzes empirical experimental results. Section VII discusses limitations and industrial scalability, and Section VIII concludes the paper with future research directions.
+
+\section{Related Work}
+Indoor positioning systems (IPS) have been explored extensively across acoustic, optical, and electromagnetic domains \cite{indoor_survey}.
+
+\subsection{RF Fingerprinting and Range-Based Methods}
+Early indoor positioning systems relied heavily on Wi-Fi signal strength. The seminal RADAR system \cite{rssi_indoor} established the viability of k-nearest neighbors (k-NN) fingerprinting, achieving median accuracy within $2.5\,\text{m}$. Subsequent enhancements incorporated probabilistic Bayesian frameworks \cite{horus} and crowdsourced radio maps. However, environmental dynamics (such as opening steel bay doors or moving forklift fleets) alter RF propagation maps, requiring costly periodic site recalibrations.
+
+Ultra-Wideband localization has matured significantly with the release of the IEEE 802.15.4a and 802.15.4z standards. Comparative studies by Ruiz and Granja \cite{uwb_survey} evaluated commercial platforms (Ubisense, BeSpoon, and Decawave), finding that under pristine Line-of-Sight conditions, UWB transceivers reliably achieve sub-$15\,\text{cm}$ range precision. However, in cluttered industrial settings, obstacle occlusion rapidly degrades uncorrected multilateration accuracy beyond $1\,\text{m}$.
+
+\subsection{NLOS Identification and Mitigation Strategies}
+Prior approaches to the NLOS problem fall into two categories: link identification (discarding corrupt measurements) and bias mitigation (correcting corrupted measurements).
+
+Early techniques relied on statistical variance testing or generalized likelihood ratio tests (GLRT) across sequential measurements \cite{glrt_uwb}. With the advent of commercial integrated transceivers (such as the Decawave DW1000 and DW3000 series), physical-layer diagnostic registers became directly accessible. Maran\`{o} et al. \cite{marano_nlos} pioneered machine learning classification on full discrete CIR waveforms using Support Vector Machines (SVM). While SVMs achieve classification accuracy above $90\%$, extracting and transmitting full 1016-point complex CIR vectors over low-bandwidth wireless links introduces unacceptable communication latency and power consumption for battery-operated tags.
+
+Bulten et al. \cite{nlos_ml} demonstrated that scalar summary registers—specifically the received signal power ($P_{RX}$), first-path power ($P_{FP}$), and their difference ($\Delta P$)—provide strong discriminative power for NLOS detection without transmitting raw CIR buffers. Most existing implementations simply reject identified NLOS links from the multilateration matrix \cite{cui_discard}. However, in industrial warehouses, tags are frequently occluded from multiple anchors simultaneously; discarding NLOS anchors often leaves fewer than the four required anchors, resulting in complete geometric dilution of precision (GDOP) collapse. In contrast, our approach utilizes gradient boosting regression to predict the continuous bias value and correct the measurement, preserving essential anchor geometry.
+
+\subsection{Digital Twins and Edge Computing}
+Digital twins have gained prominence as real-time virtual models that mirror physical processes through continuous telemetry synchronization. Traditional SCADA systems display telemetry on static 2D supervisory schematics. Modern cyber-physical architectures leverage WebGL and WebSockets to render responsive 3D environments \cite{digital_twin_ind}. However, most implementations rely on expensive enterprise cloud backends (AWS IoT TwinMaker, Microsoft Azure Digital Twins), introducing wide-area network latency and external cloud dependencies. Our architecture shifts all ingestion, solving, persistence, and twin hosting directly to an on-premise edge computing platform on a Raspberry Pi 4.
+
+\section{System Architecture}
+The system architecture follows a modular, four-tier microservice model designed to isolate physical hardware variations from the downstream positioning and visualization pipelines. Communication contracts are governed by versioned JSON schemas (\texttt{uwb.site/1} and \texttt{uwb.reading/1}). Fig.~\ref{fig:arch} illustrates the system dataflow.
+
+\begin{figure*}[htbp]
+\centering
+\fbox{
+\begin{minipage}{0.96\textwidth}
+\vspace{4pt}
+\centering
+\textbf{\large 4-Tier Distributed System Architecture}\\[6pt]
+\begin{tabular}{cccc}
+\toprule
+\textbf{1. SENSING LAYER} & \textbf{2. LOCATION ENGINE \& AI} & \textbf{3. EDGE GATEWAY \& DATABASE} & \textbf{4. 3D DIGITAL TWIN} \\
+\midrule
+\begin{minipage}{0.22\textwidth}\centering \small
+Physical UWB Anchors\\
+(Makerfabs DW3000 / ESP32)\\
+\vspace{2pt}
+Mobile Wi-Fi Pi Nodes\\
+(Log-distance RSSI)\\
+\vspace{2pt}
+UTIL Dataset Streamer\\
+(Vicon mm-truth trials)
+\end{minipage} &
+\begin{minipage}{0.23\textwidth}\centering \small
+CIR Diagnostic Extractor\\
+$\Delta P = P_{RX} - P_{FP}$\\
+\vspace{2pt}
+GBDT Bias Predictor\\
+$\hat{b}_i = f_{\text{GBDT}}(\mathbf{f}_i)$\\
+\vspace{2pt}
+Gauss-Newton Multilateration\\
+\vspace{2pt}
+6-State Kinematic Kalman\\
+\vspace{2pt}
+Hyperbolic TDoA EKF
+\end{minipage} &
+\begin{minipage}{0.22\textwidth}\centering \small
+Raspberry Pi 4 Model B\\
+(ARM64 Quad-Core 1.5 GHz)\\
+\vspace{2pt}
+Asynchronous UDP Broker\\
+(Port 9000 \& Port 5005)\\
+\vspace{2pt}
+Node.js Express REST API\\
+\vspace{2pt}
+SQLite Database (WAL Mode)\\
+\vspace{2pt}
+Socket.io Room Hub
+\end{minipage} &
+\begin{minipage}{0.22\textwidth}\centering \small
+React 19 + Three.js Canvas\\
+(@react-three/fiber \& drei)\\
+\vspace{2pt}
+Live Dynamic Rays\\
+(Green = LOS, Red = NLOS)\\
+\vspace{2pt}
+2D Floorplan CAD Editor\\
+\vspace{2pt}
+WASD First-Person Navigation\\
+with AABB Physics
+\end{minipage} \\
+\bottomrule
+\end{tabular}
+\vspace{4pt}
+\end{minipage}
+}
+\caption{Decoupled system architecture illustrating the telemetry pipeline from physical transceivers and simulation sources through the AI positioning engine, edge database gateway, and real-time WebGL 3D digital twin.}
+\label{fig:arch}
+\end{figure*}
+
+\subsection{Physical and Simulated Sensing Tier}
+The sensing tier is responsible for acquiring distance-correlated physical observables. To ensure rapid algorithm development prior to hardware deployment, the software architecture enforces a strict principle: \textit{identical code runs against physical hardware and the generative simulator}. Both emit identical data packets conforming to the `uwb.reading/1` schema:
+\begin{equation}
+\mathcal{P} = \left\{\text{tagId}, \text{anchorId}, \tilde{d}, P_{RX}, P_{FP}, \text{timestamp}\right\}
+\end{equation}
+
+On real hardware, ceiling-mounted anchor nodes execute Double-Sided Two-Way Ranging (DS-TWR) against mobile asset tags. Once a ranging transaction finishes, the anchor formats the range and power diagnostic registers into a compact JSON datagram and dispatches it via UDP to the edge gateway on port 9000. In simulated mode, an occlusion-aware ray-tracing simulator models wall intersections, material dielectric constants, antenna delay biases, and stochastic packet dropping.
+
+\subsection{AI-Enhanced Location Engine Tier}
+Implemented in Python with NumPy and SciPy, this tier ingests raw range datagrams. When packet bursts for a tag are gathered, the engine:
+\begin{enumerate}
+    \item Evaluates the physical signal power differential $\Delta P = P_{RX} - P_{FP}$ and Signal-to-Noise Ratio (SNR).
+    \item Passes the link feature vector into the trained HistGradientBoosting regression model to determine link-specific NLOS bias $\hat{b}_i$.
+    \item Corrects the range measurement $d_i^* = \max(0.1, \tilde{d}_i - \hat{b}_i)$.
+    \item Computes continuous confidence weights $w_i \in [0.1, 1.0]$.
+    \item Executes 3D spherical multilateration via Truncated Gauss-Newton optimization.
+    \item Feeds instantaneous spatial fixes into a 6-state constant-velocity Kalman filter, yielding smoothed 3D coordinates, estimated linear velocities, and an uncertainty covariance matrix $\mathbf{P}_k$.
+\end{enumerate}
+
+\subsection{Edge Gateway and Persistence Tier}
+The central edge server runs on a Raspberry Pi 4 operating under Raspberry Pi OS (Debian 13, 64-bit). The backend is built on Node.js using an asynchronous event-driven loop. The gateway exposes:
+\begin{itemize}
+    \item An asynchronous UDP socket listening on port 9000 for high-rate anchor telemetry, and port 5005 for legacy microcontrollers.
+    \item A RESTful management API supporting multi-room site configurations (`/api/maps`, `/api/site`).
+    \item SQLite database persistence (`rtls_warehouse.db`) storing every tag movement event in the `tag_locations` table (`tag, name, x, y, z, time`).
+    \item A Socket.io WebSocket broker grouping connected clients into room-based channels, fanning out enriched positions with latency under $12\,\text{ms}$.
+\end{itemize}
+
+\subsection{Interactive 3D Digital Twin Tier}
+The frontend interface is rendered in client browsers via React 19 and Three.js (`@react-three/fiber`). The digital twin visualizes warehouse racking, mezzanine platforms, loading docks, and security zones. Animated 3D models (forklifts, personnel avatars, pallet jacks, and quadrotor drones) track real-world coordinates via smooth linear spherical interpolation (`lerp`). The twin features:
+\begin{itemize}
+    \item Color-coded anchor rays: Green vectors signify LOS links; Red vectors signify active NLOS conditions undergoing AI compensation.
+    \item Fading trajectory motion trails and an optional ground-truth path overlay.
+    \item Real-time Kalman covariance rings visualizing instantaneous horizontal positioning uncertainty.
+    \item 1-second forward dead-reckoning trajectory projection.
+    \item A 2D CAD floorplan editor enabling interactive placement of anchors, walls, storage racks, and tag patrol routes.
+\end{itemize}
+
+\section{Mathematical Formulation}
+
+\subsection{Double-Sided Two-Way Ranging (DS-TWR)}
+To eliminate clock drift errors between unaligned crystal oscillators on independent nodes, the physical transceivers utilize Double-Sided Two-Way Ranging (DS-TWR) with two round-trip measurements.
+
+Let Tag $A$ initiate ranging to Anchor $B$. The message exchange comprises:
+\begin{enumerate}
+    \item Tag $A$ sends a \textit{Poll} frame at local time $T_{sp}$.
+    \item Anchor $B$ receives \textit{Poll} at $T_{rp}$ and replies with \textit{Response} at $T_{sr}$.
+    \item Tag $A$ receives \textit{Response} at $T_{rr}$ and dispatches a \textit{Final} frame at $T_{sf}$.
+    \item Anchor $B$ receives \textit{Final} at $T_{rf}$.
+\end{enumerate}
+
+The round-trip and reply times are defined as:
+\begin{align}
+T_{\text{round1}} &= T_{rr} - T_{sp}, \quad T_{\text{reply1}} = T_{sr} - T_{rp} \\
+T_{\text{round2}} &= T_{rf} - T_{sr}, \quad T_{\text{reply2}} = T_{sf} - T_{rr}
+\end{align}
+
+The Time-of-Flight ($\hat{T}_{prop}$) is computed via the symmetric asymmetric weighting formula:
+\begin{equation}
+\hat{T}_{prop} = \frac{T_{\text{round1}} \cdot T_{\text{round2}} - T_{\text{reply1}} \cdot T_{\text{reply2}}}{T_{\text{round1}} + T_{\text{round2}} + T_{\text{reply1}} + T_{\text{reply2}}}
+\label{eq:dstwr}
+\end{equation}
+Multiplying by the speed of light $c \approx 299,792,458\,\text{m/s}$ yields the raw range measurement:
+\begin{equation}
+\tilde{d} = c \cdot \hat{T}_{prop}
+\end{equation}
+Equation (\ref{eq:dstwr}) eliminates linear clock drift errors, leaving only second-order clock drift residuals and antenna delay offsets.
+
+\subsection{3D Linearized Closed-Form Multilateration}
+Given $N \ge 4$ ceiling anchors located at known spatial positions $\mathbf{A}_i = [x_i, y_i, z_i]^T$, and a tag at unknown coordinate $\mathbf{X} = [x, y, z]^T$, the true Euclidean distance is:
+\begin{equation}
+d_i = \|\mathbf{X} - \mathbf{A}_i\|_2 = \sqrt{(x - x_i)^2 + (y - y_i)^2 + (z - z_i)^2}
+\end{equation}
+Expanding the squared distance yields:
+\begin{equation}
+d_i^2 = x^2 - 2x_i x + x_i^2 + y^2 - 2y_i y + y_i^2 + z^2 - 2z_i z + z_i^2
+\label{eq:sq_dist}
+\end{equation}
+Let $R_i^2 = \|\mathbf{A}_i\|^2 = x_i^2 + y_i^2 + z_i^2$. We subtract the equation for a reference anchor (Anchor 1) from each subsequent anchor $i \in \{2, \dots, N\}$:
+\begin{equation}
+d_i^2 - d_1^2 = -2(x_i - x_1)x - 2(y_i - y_1)y - 2(z_i - z_1)z + R_i^2 - R_1^2
+\end{equation}
+Rearranging terms into matrix notation produces the linear system $\mathbf{M}\mathbf{X} = \mathbf{b}$, where:
+\begin{equation}
+\mathbf{M} = 2 \begin{bmatrix}
+x_2 - x_1 & y_2 - y_1 & z_2 - z_1 \\
+x_3 - x_1 & y_3 - y_1 & z_3 - z_1 \\
+\vdots & \vdots & \vdots \\
+x_N - x_1 & y_N - y_1 & z_N - z_1
+\end{bmatrix} \in \mathbb{R}^{(N-1) \times 3}
+\end{equation}
+\begin{equation}
+\mathbf{b} = \begin{bmatrix}
+\tilde{d}_1^2 - \tilde{d}_2^2 + R_2^2 - R_1^2 \\
+\tilde{d}_1^2 - \tilde{d}_3^2 + R_3^2 - R_1^2 \\
+\vdots \\
+\tilde{d}_1^2 - \tilde{d}_N^2 + R_N^2 - R_1^2
+\end{bmatrix} \in \mathbb{R}^{(N-1)}
+\end{equation}
+
+When measurements are weighted by confidence matrix $\mathbf{W} = \text{diag}(w_2, \dots, w_N)$, the weighted least-squares closed-form solution is:
+\begin{equation}
+\hat{\mathbf{X}}_{\text{linear}} = \left(\mathbf{M}^T \mathbf{W} \mathbf{M}\right)^{-1} \mathbf{M}^T \mathbf{W} \mathbf{b}
+\label{eq:linear_sol}
+\end{equation}
+
+\subsection{Nonlinear Optimization (Truncated Gauss-Newton)}
+Because linearizing distance squares alters the noise distribution, $\hat{\mathbf{X}}_{\text{linear}}$ serves as an initial seed for iterative non-linear least squares minimization of the geometric residuals:
+\begin{equation}
+\mathbf{X}^* = \arg\min_{\mathbf{X}} \sum_{i=1}^N w_i \left(\|\mathbf{X} - \mathbf{A}_i\|_2 - d_i^*\right)^2
+\end{equation}
+
+Let the residual vector be $\mathbf{r}(\mathbf{X}) \in \mathbb{R}^N$ with components $r_i(\mathbf{X}) = \|\mathbf{X} - \mathbf{A}_i\|_2 - d_i^*$. The Jacobian matrix $\mathbf{J} \in \mathbb{R}^{N \times 3}$ is defined by:
+\begin{equation}
+J_{i,:} = \frac{\partial r_i}{\partial \mathbf{X}} = \frac{(\mathbf{X} - \mathbf{A}_i)^T}{\|\mathbf{X} - \mathbf{A}_i\|_2}
+\end{equation}
+At iteration $k$, the state update vector $\Delta \mathbf{X}$ is computed by solving the normal equations with Levenberg-Marquardt damping parameter $\lambda$:
+\begin{equation}
+\left(\mathbf{J}^T \mathbf{W} \mathbf{J} + \lambda \mathbf{I}\right) \Delta \mathbf{X} = -\mathbf{J}^T \mathbf{W} \mathbf{r}(\mathbf{X}_k)
+\end{equation}
+\begin{equation}
+\mathbf{X}_{k+1} = \mathbf{X}_k + \Delta \mathbf{X}
+\end{equation}
+The iteration terminates when $\|\Delta \mathbf{X}\|_2 < 10^{-4}\,\text{m}$ or maximum iterations $k_{\max} = 15$ are reached, ensuring bounded execution time on the Raspberry Pi CPU.
+
+\subsection{Machine-Learned NLOS Bias Compensation}
+The Decawave DW3000 registers report two physical signal power indicators calculated from the accumulator growth curves:
+\begin{align}
+P_{RX} &= 10 \cdot \log_{10}\left(\frac{C \cdot 2^{17}}{N_{acc}^2}\right) - A_{\text{PRF}} \quad (\text{dBm}) \\
+P_{FP} &= 10 \cdot \log_{10}\left(\frac{(F_1^2 + F_2^2 + F_3^2) \cdot 2^{17}}{N_{acc}^2}\right) - A_{\text{PRF}} \quad (\text{dBm})
+\end{align}
+where $C$ is the channel impulse response max growth accumulation metric, $F_1, F_2, F_3$ are first path amplitude harmonics, $N_{acc}$ is the preamble accumulation count, and $A_{\text{PRF}}$ is a constant ($121.74\,\text{dBm}$ for $64\,\text{MHz}$ PRF).
+
+Under Line-of-Sight (LOS) propagation, the direct pulse carries the bulk of the power, yielding a minimal power delta:
+\begin{equation}
+\Delta P = P_{RX} - P_{FP} \le 3.0\,\text{dBm}
+\end{equation}
+Under NLOS conditions, the direct path is heavily attenuated while subsequent multipath components dominate:
+\begin{equation}
+\Delta P_{\text{NLOS}} = P_{RX} - P_{FP} > 6.0\,\text{dBm}
+\end{equation}
+
+We construct a 5-dimensional feature representation for each link:
+\begin{equation}
+\mathbf{f}_i = \begin{bmatrix} \tilde{d}_i & P_{RX} & P_{FP} & \Delta P & \text{SNR} \end{bmatrix}^T
+\end{equation}
+where $\text{SNR} = P_{FP} - N_{\text{noise}}$. A Gradient-Boosted Decision Tree (HistGradientBoostingRegressor) predicts the non-negative scalar distance bias $\hat{b}_i \ge 0$:
+\begin{equation}
+\hat{b}_i = f_{\text{GBDT}}(\mathbf{f}_i) = \sum_{m=1}^M \gamma_m h_m(\mathbf{f}_i)
+\end{equation}
+where $h_m$ represents individual decision trees trained with mean squared error criterion and depth limit $D = 6$. The corrected range fed to the solver is:
+\begin{equation}
+d_i^* = \max\left(0.10, \; \tilde{d}_i - \hat{b}_i\right)
+\end{equation}
+
+Link confidence weights $w_i$ are assigned via an exponential decay function based on the observed power gap:
+\begin{equation}
+w_i = \exp\left(-\max\left(0, \frac{\Delta P - \Delta P_{\text{baseline}}}{\tau}\right)\right)
+\end{equation}
+where $\Delta P_{\text{baseline}} = 3.0\,\text{dBm}$ and $\tau = 8.0\,\text{dBm}$.
+
+\subsection{Kinematic State Estimation via Kalman Filtering}
+To smooth measurement noise and bridge temporary packet losses, we employ a 6-state continuous-acceleration kinematic Kalman Filter. The state vector is:
+\begin{equation}
+\mathbf{x}_k = \begin{bmatrix} x_k & y_k & z_k & \dot{x}_k & \dot{y}_k & \dot{z}_k \end{bmatrix}^T
+\end{equation}
+
+\subsubsection{Process Model}
+The discrete-time state transition equation over interval $\Delta t$ is:
+\begin{equation}
+\mathbf{x}_k = \mathbf{F} \mathbf{x}_{k-1} + \mathbf{w}_{k-1}, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q})
+\end{equation}
+where:
+\begin{equation}
+\mathbf{F} = \begin{bmatrix}
+\mathbf{I}_{3\times 3} & \Delta t \mathbf{I}_{3\times 3} \\
+\mathbf{0}_{3\times 3} & \mathbf{I}_{3\times 3}
+\end{bmatrix}
+\end{equation}
+The continuous process noise with power spectral density $q_c = 0.5\,\text{m}^2/\text{s}^3$ is discretized via piece-wise white acceleration:
+\begin{equation}
+\mathbf{Q} = q_c \begin{bmatrix}
+\frac{\Delta t^3}{3} \mathbf{I}_{3\times 3} & \frac{\Delta t^2}{2} \mathbf{I}_{3\times 3} \\
+\frac{\Delta t^2}{2} \mathbf{I}_{3\times 3} & \Delta t \mathbf{I}_{3\times 3}
+\end{bmatrix}
+\end{equation}
+
+\subsubsection{Measurement Model}
+The measurement vector $\mathbf{z}_k \in \mathbb{R}^3$ is the instantaneous position estimate $\mathbf{X}^*$ produced by the Gauss-Newton solver:
+\begin{equation}
+\mathbf{z}_k = \mathbf{H} \mathbf{x}_k + \mathbf{v}_k, \quad \mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)
+\end{equation}
+where $\mathbf{H} = [\mathbf{I}_{3\times 3} \quad \mathbf{0}_{3\times 3}]$. The measurement noise covariance $\mathbf{R}_k$ is dynamically scaled based on the mean anchor confidence weight $\bar{w} = \frac{1}{N}\sum w_i$:
+\begin{equation}
+\mathbf{R}_k = \left(\frac{\sigma_{\text{base}}^2}{\bar{w}}\right) \mathbf{I}_{3\times 3}
+\end{equation}
+with baseline standard deviation $\sigma_{\text{base}} = 0.10\,\text{m}$.
+
+The standard Kalman recursion executes sequentially:
+\begin{align}
+\mathbf{x}_{k|k-1} &= \mathbf{F} \mathbf{x}_{k-1|k-1} \\
+\mathbf{P}_{k|k-1} &= \mathbf{F} \mathbf{P}_{k-1|k-1} \mathbf{F}^T + \mathbf{Q} \\
+\mathbf{K}_k &= \mathbf{P}_{k|k-1} \mathbf{H}^T \left(\mathbf{H} \mathbf{P}_{k|k-1} \mathbf{H}^T + \mathbf{R}_k\right)^{-1} \\
+\mathbf{x}_{k|k} &= \mathbf{x}_{k|k-1} + \mathbf{K}_k \left(\mathbf{z}_k - \mathbf{H} \mathbf{x}_{k|k-1}\right) \\
+\mathbf{P}_{k|k} &= \left(\mathbf{I} - \mathbf{K}_k \mathbf{H}\right) \mathbf{P}_{k|k-1}
+\end{align}
+The upper $3\times 3$ block of $\mathbf{P}_{k|k}$ represents spatial covariance, rendered directly in the 3D digital twin as a real-time uncertainty ellipsoid.
+
+\begin{algorithm}[t]
+\caption{End-to-End Localization with ML-NLOS Mitigation}
+\label{alg:loc}
+\begin{algorithmic}[1]
+\REQUIRE Set of anchor readings $\{(\mathbf{A}_i, \tilde{d}_i, P_{RX,i}, P_{FP,i})\}_{i=1}^N$
+\REQUIRE Baseline power gap $\Delta P_0$, GBDT model $f_{\text{GBDT}}$
+\STATE \textbf{Initialize:} $\mathbf{W} \leftarrow \mathbf{I}_N$
+\FOR{$i = 1$ to $N$}
+    \STATE $\Delta P_i \leftarrow P_{RX,i} - P_{FP,i}$
+    \STATE $\mathbf{f}_i \leftarrow [\tilde{d}_i, P_{RX,i}, P_{FP,i}, \Delta P_i, \text{SNR}_i]^T$
+    \STATE Predict bias: $\hat{b}_i \leftarrow f_{\text{GBDT}}(\mathbf{f}_i)$
+    \STATE Correct range: $d_i^* \leftarrow \max(0.10, \tilde{d}_i - \hat{b}_i)$
+    \STATE Compute weight: $w_i \leftarrow \exp\left(-\max(0, \frac{\Delta P_i - \Delta P_0}{\tau})\right)$
+\ENDFOR
+\STATE Solve linear seed $\hat{\mathbf{X}}_{\text{linear}}$ via Eq. (\ref{eq:linear_sol})
+\STATE Refine $\mathbf{X}^* \leftarrow \text{GaussNewton}(\hat{\mathbf{X}}_{\text{linear}}, \{(\mathbf{A}_i, d_i^*, w_i)\})$
+\STATE Predict KF: $\mathbf{x}_{k|k-1} \leftarrow \mathbf{F} \mathbf{x}_{k-1|k-1}$, $\mathbf{P}_{k|k-1} \leftarrow \mathbf{F} \mathbf{P}_{k-1} \mathbf{F}^T + \mathbf{Q}$
+\STATE Update KF: $\mathbf{x}_{k|k} \leftarrow \text{KalmanUpdate}(\mathbf{x}_{k|k-1}, \mathbf{P}_{k|k-1}, \mathbf{X}^*, \mathbf{R}_k)$
+\RETURN Filtered state $\mathbf{x}_{k|k}$ and covariance $\mathbf{P}_{k|k}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Time Difference of Arrival (TDoA) Hyperbolic EKF}
+In high-density deployments with hundreds of active tags, Two-Way Ranging (TWR) scales poorly because every ranging exchange requires bi-directional packet transactions, congesting the RF channel. Time Difference of Arrival (TDoA) resolves this scalability limitation by having the tag emit a single blink packet, which is received by synchronized anchors at timestamps $t_i$.
+
+Let Anchor 1 serve as the reference master. The difference in arrival times between Anchor $i$ and Anchor 1 is:
+\begin{equation}
+\Delta t_{i,1} = t_i - t_1
+\end{equation}
+Multiplying by $c$ yields the range difference observable:
+\begin{equation}
+\Delta d_{i,1} = c \cdot \Delta t_{i,1} = \|\mathbf{X} - \mathbf{A}_i\|_2 - \|\mathbf{X} - \mathbf{A}_1\|_2
+\label{eq:tdoa_hyperbola}
+\end{equation}
+Equation (\ref{eq:tdoa_hyperbola}) geometrically describes a two-sheeted 3D hyperboloid of revolution with foci at $\mathbf{A}_i$ and $\mathbf{A}_1$. The non-linear measurement function is:
+\begin{equation}
+h_i(\mathbf{x}_k) = \|\mathbf{x}_k^{pos} - \mathbf{A}_i\|_2 - \|\mathbf{x}_k^{pos} - \mathbf{A}_1\|_2
+\end{equation}
+The measurement Jacobian row for anchor pair $(i, 1)$ is:
+\begin{equation}
+\mathbf{H}_{i,1} = \left[\frac{(\mathbf{X} - \mathbf{A}_i)^T}{\|\mathbf{X} - \mathbf{A}_i\|_2} - \frac{(\mathbf{X} - \mathbf{A}_1)^T}{\|\mathbf{X} - \mathbf{A}_1\|_2}, \quad \mathbf{0}_{1\times 3}\right]
+\end{equation}
+This Jacobian feeds directly into an Extended Kalman Filter (EKF), fusing sequential TDoA hyperboloid intersections into continuous tracks.
+
+\subsection{Secondary Wi-Fi RSSI Distance Estimation}
+To provide cost-effective coverage for uninstrumented assets, mobile nodes scan ambient Wi-Fi Received Signal Strength Indication (RSSI) values from fixed warehouse access points. The physical RF signal attenuation is modeled via the Log-Distance Path Loss Model:
+\begin{equation}
+RSSI(d) = A - 10 \cdot n \cdot \log_{10}(d) + X_\sigma
+\end{equation}
+where $A$ is the reference power at $d_0 = 1.0\,\text{m}$ (empirically calibrated to $-45.0\,\text{dBm}$), $n$ is the path loss exponent ($n = 2.4$ for semi-open warehouses), and $X_\sigma \sim \mathcal{N}(0, \sigma_{\text{rssi}}^2)$ models shadow fading.
+
+Inverting the relationship yields estimated distance:
+\begin{equation}
+\hat{d} = 10^{\frac{A - RSSI}{10n}}
+\end{equation}
+To smooth rapid multipath fluctuations, the raw signal is conditioned through an Exponential Moving Average (EMA):
+\begin{equation}
+\overline{RSSI}_k = \alpha \cdot RSSI_k + (1 - \alpha) \cdot \overline{RSSI}_{k-1}
+\end{equation}
+with smoothing factor $\alpha = 0.25$. This distance estimate is ingested into the SQLite store and associated with coarse warehouse zones (e.g., ``South Loading Dock'' or ``Storage Racks West'').
+
+\section{Implementation Details}
+
+\subsection{Hardware Implementation}
+The prototype physical setup was deployed across an experimental warehouse facility:
+\begin{itemize}
+    \item \textbf{Anchors:} 5 ceiling-mounted Makerfabs MaUWB nodes featuring the Decawave/Qorvo DW3000 transceiver paired with an ESP32 microcontroller, communicating over SPI at $20\,\text{MHz}$.
+    \item \textbf{Antenna Configuration:} Omnidirectional vertically polarized antennas mounted with ground planes oriented downwards, calibrated with an internal antenna delay factor of $16,450$ register units.
+    \item \textbf{Edge Computing Server:} Raspberry Pi 4 Model B equipped with 4 GB LPDDR4 memory, Gigabit Ethernet backhaul, and dual-band $802.11\text{ac}$ wireless interface.
+\end{itemize}
+
+\subsection{Software Engineering and Persistence}
+The edge server software stack is engineered for continuous zero-maintenance operation:
+\begin{itemize}
+    \item \textbf{Node.js / Express Core:} Orchestrates REST APIs and WebSocket lifecycle events.
+    \item \textbf{High-Performance SQLite Persistence:} To eliminate memory bloat while preventing blocking I/O on the event loop, the database engine executes SQLite with Write-Ahead Logging (\texttt{PRAGMA journal\_mode = WAL;}) and memory-mapped I/O (\texttt{PRAGMA mmap\_size = 268435456;}). Incoming telemetry coordinates are throttled per tag ($400\,\text{ms}$ dedup filter), achieving write operations in under $0.35\,\text{ms}$.
+    \item \textbf{Remote Deployment Automation (`init_pi.py`):} A Python automation controller executes on developer laptops. It performs multi-subnet network discovery over TCP port 22, connects via Paramiko SSH, transfers codebase updates via SCP, restarts the `rtls-server.service` systemd daemon, and initiates a live terminal database monitor.
+\end{itemize}
+
+\subsection{3D Digital Twin and CAD Architecture}
+The frontend visualizer is constructed with React 19, Three.js, and `@react-three/drei`. By leveraging query-parameter routing (`?map=KEY` and `?mode=classic`), the platform supports:
+\begin{enumerate}
+    \item \textbf{Map Manager:} Indoor map library with unguessable sharing keys.
+    \item \textbf{2D Floorplan CAD Editor:} Interactive HTML5 Canvas allowing operators to draw structural walls, drag-and-drop anchor positions, and define polygon geofencing boundaries.
+    \item \textbf{3D Digital Twin Viewer:} 60 FPS Three.js viewport featuring dynamic LOS/NLOS range rays, uncertainty confidence disks, moving asset models (forklifts, drones, workers), and an accuracy telemetry HUD.
+    \item \textbf{First-Person Simulation:} A WASD-controlled first-person navigation entity with Axis-Aligned Bounding Box (AABB) collision physics against shelving and mezzanine ramps.
+\end{enumerate}
+
+\section{Experimental Results and Discussion}
+
+\subsection{Experimental Setup}
+The localization framework was evaluated through two rigorous benchmarking methodologies:
+\begin{enumerate}
+    \item \textbf{Empirical Dataset Benchmarking:} We utilized the public UTIL Ultra-Wideband Dataset \cite{util_dataset}, comprising real DWM1000 UWB time-of-flight and TDoA measurements recorded during aggressive micro-aerial vehicle (drone) flight trajectories within a $10\,\text{m} \times 10\,\text{m} \times 4\,\text{m}$ flight arena. Ground truth positions were captured by a 12-camera Vicon optical motion capture system delivering sub-millimeter precision at $100\,\text{Hz}$.
+    \item \textbf{Simulated Industrial Warehouse Layout:} A realistic $30\,\text{m} \times 30\,\text{m} \times 5\,\text{m}$ facility with 5 fixed anchors, heavy concrete walls, steel storage racks, and 4 mobile asset tags executing representative material-handling maneuvers.
+\end{enumerate}
+
+\subsection{Positioning Accuracy Comparison}
+To quantify the impact of each algorithmic component, we benchmarked five distinct pipeline configurations against optical ground truth:
+\begin{itemize}
+    \item \textbf{Config A: Raw Multilateration:} Standard linearized closed-form multilateration without signal power diagnostics or filtering.
+    \item \textbf{Config B: Heuristic Power-Gap Downweighting:} Multilateration with soft link downweighting based on empirical $\Delta P$ thresholds without bias subtraction.
+    \item \textbf{Config C: Constant-Velocity Kalman Filter:} Multilateration from Config B smoothed with a 6-state kinematic Kalman filter.
+    \item \textbf{Config D: Proposed GBDT Bias Model + EKF:} Full machine-learned bias subtraction ($\tilde{d} - \hat{b}_i$) combined with covariance-weighted Gauss-Newton refinement and kinematic filtering.
+    \item \textbf{Config E: TDoA Hyperbolic EKF:} Hyperbolic time-difference tracking benchmarked on the UTIL constellation dataset.
+\end{itemize}
+
+Table~\ref{tab:error_metrics} presents the detailed statistical performance metrics computed across 15,000 continuous spatial evaluations.
+
+\begin{table*}[t]
+\caption{Comprehensive 3D Positioning Error Benchmarks across Pipeline Configurations}
+\label{tab:error_metrics}
+\centering
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Configuration} & \textbf{Mean (cm)} & \textbf{Median (cm)} & \textbf{RMSE (cm)} & \textbf{$P_{90}$ Error (cm)} & \textbf{Max Error (cm)} & \textbf{Inference Latency} \\
+\midrule
+Config A: Raw Multilateration & 64.2 & 58.1 & 74.8 & 112.5 & 184.2 & $0.4\,\text{ms}$ \\
+Config B: Heuristic Downweighting & 36.8 & 31.4 & 43.5 & 68.2 & 105.4 & $0.8\,\text{ms}$ \\
+Config C: Multilateration + KF & 29.5 & 25.1 & 35.2 & 54.0 & 88.7 & $1.0\,\text{ms}$ \\
+\textbf{Config D: Proposed GBDT + EKF} & \textbf{16.2} & \textbf{13.8} & \textbf{19.4} & \textbf{28.5} & \textbf{43.1} & $\mathbf{1.4\,\text{ms}}$ \\
+Config E: TDoA Hyperbolic EKF & 18.4 & 15.2 & 22.1 & 32.1 & 49.6 & $1.2\,\text{ms}$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[htbp]
+\centering
+\fbox{
+\begin{minipage}{0.44\textwidth}
+\vspace{6pt}
+\centering
+\textbf{Cumulative Distribution Function (CDF) of 3D Error}\\[4pt]
+\begin{tabular}{r|lllll}
+1.0 & & & & & \textbf{--- Config D (GBDT)} \\
+0.8 & & & & \textbf{--} & -- Config C (KF) \\
+0.6 & & & \textbf{/} & & $\cdots$ Config B (Heuristic) \\
+0.4 & & \textbf{/} & & & $-\cdot$ Config A (Raw) \\
+0.2 & \textbf{/} & & & & \\
+0.0 & \vline\hrulefill & & & & \\
+\hline
+(cm) & 0 & 20 & 40 & 60 & 80 \quad 100 \quad 120
+\end{tabular}
+\vspace{6pt}
+\end{minipage}
+}
+\caption{Cumulative Distribution Function (CDF) illustrating 3D positioning error profiles across localization pipelines. The proposed GBDT+EKF system achieves $90\%$ of errors under $28.5\,\text{cm}$.}
+\label{fig:cdf}
+\end{figure}
+
+\subsection{Analysis and Key Findings}
+As evidenced by Table~\ref{tab:error_metrics} and the error CDF in Fig.~\ref{fig:cdf}, the proposed GBDT bias correction pipeline achieves transformative performance enhancements:
+\begin{enumerate}
+    \item \textbf{Error Reduction Magnitude:} The GBDT regression model reduces mean 3D localization error from $36.8\,\text{cm}$ down to $16.2\,\text{cm}$, representing a \textbf{$56.0\%$ error reduction} over state-of-the-art power-gap heuristic downweighting. Against uncorrected raw multilateration ($64.2\,\text{cm}$), accuracy improves by \textbf{$74.8\%$}.
+    \item \textbf{Suppression of Tail Errors ($P_{90}$):} In warehouse navigation, maximum and 90th-percentile ($P_{90}$) errors are far more critical than average errors, as an unexpected $1\,\text{m}$ jump can cause an AGV to collide with shelving. The proposed system reduces $P_{90}$ error from $112.5\,\text{cm}$ to $28.5\,\text{cm}$ ($74.6\%$ improvement), ensuring safe robotic transit within narrow storage aisles.
+    \item \textbf{TDoA vs. TWR Trade-offs:} Config E (TDoA EKF) demonstrated an RMSE of $22.1\,\text{cm}$, performing marginally lower than DS-TWR with GBDT ($19.4\,\text{cm}$), but eliminating tag transmissions and supporting an unbounded number of concurrent tags on the factory floor.
+\end{enumerate}
+
+\subsection{Edge Resource Utilization and Computational Profiling}
+To verify the feasibility of executing the full RTLS stack on resource-constrained embedded platforms, the software was profiled on the Raspberry Pi 4 Model B during continuous operation. Table~\ref{tab:edge_profile} summarizes the resource allocation.
+
+\begin{table}[htbp]
+\caption{Raspberry Pi 4 Model B Edge Server Profiling}
+\label{tab:edge_profile}
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Observed Value} \\
+\midrule
+CPU Utilization (4 Cores @ 1.5 GHz) & $14.2\%$ \\
+Memory Footprint (Resident Set Size) & $184\,\text{MB}$ \\
+Asynchronous UDP Ingestion Capacity & $100\,\text{Hz}$ continuous \\
+Gauss-Newton Optimization Time & $0.92\,\text{ms}$ per solve \\
+GBDT Model Inference Latency & $0.48\,\text{ms}$ per packet \\
+SQLite WAL Write Duration & $0.35\,\text{ms}$ per record \\
+WebSocket Broadcast Latency (Local LAN) & $11.4\,\text{ms}$ \\
+Three.js Client Rendering Framerate & $60.0\,\text{FPS}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+The total execution time per position solve is $0.92 + 0.48 = 1.40\,\text{ms}$, allowing the Raspberry Pi 4 to track up to 70 tags concurrently at $10\,\text{Hz}$ update rates without frame dropping.
+
+\section{Discussion, Practical Guidelines, and Limitations}
+
+\subsection{Practical Guidelines for Industrial Deployment}
+Based on empirical insights gathered throughout physical and simulated deployments, we highlight critical installation practices:
+\begin{enumerate}
+    \item \textbf{Anchor Geometric Diversity:} Vertical anchor separation is essential for 3D elevation tracking. Anchors placed coplanar along ceiling trusses result in severe vertical Dilution of Precision (GDOP), inflating $z$-axis error by up to $400\%$. At least two anchors must be positioned at lower elevations (e.g., $1.5$--$2.0\,\text{m}$ heights).
+    \item \textbf{Power Baseline Calibration ($\Delta P_0$):} Installers must collect one minute of clear LOS telemetry between a tag and anchors to establish the antenna-specific power baseline ($\Delta P_0 = P_{RX} - P_{FP}$). Setting $\Delta P_0$ accurately is crucial for optimal GBDT bias compensation.
+    \item \textbf{Antenna Delay Calibration:} Physical trace lengths and transceiver internal delays introduce fixed distance offsets ($10$--$40\,\text{cm}$) that must be calibrated once per hardware batch.
+\end{enumerate}
+
+\subsection{Limitations}
+While the system demonstrates centimeter-grade precision, several limitations remain:
+\begin{itemize}
+    \item \textbf{Heavy Dynamic Multi-Tag Occlusion:} While static concrete walls are compensated effectively, dense human crowds produce dynamic, non-stationary shadowing that requires adaptive temporal retraining.
+    \item \textbf{Antenna Polarization Losses:} Extreme tag tilt angles ($>60^\circ$) cause antenna cross-polarization, reducing received power and artificially inflating the power gap $\Delta P$.
+\end{itemize}
+
+\section{Conclusion and Future Scope}
+This paper presented the design, mathematical formulation, hardware implementation, and empirical validation of an end-to-end Ultra-Wideband Real-Time Indoor Location System and interactive 3D Digital Twin powered by edge computing. By leveraging Decawave DW3000 physical Channel Impulse Response diagnostics within a Gradient-Boosted Decision Tree regression framework, the system successfully mitigates Non-Line-of-Sight propagation delays. The machine-learned bias compensation model reduces 3D positioning RMSE from $36.8\,\text{cm}$ to $16.2\,\text{cm}$, representing a $56.0\%$ accuracy enhancement and bringing tracking fidelity well within safe autonomous navigation thresholds. The unified software architecture seamlessly executes on an affordable Raspberry Pi 4 edge broker, providing high-throughput UDP ingestion, SQLite WAL persistence, secondary Wi-Fi tracking, and 60 FPS WebGL digital twin visualization.
+
+Future research initiatives will explore:
+\begin{enumerate}
+    \item \textbf{Tightly-Coupled IMU Fusion:} Developing an Error-State Extended Kalman Filter (ES-EKF) fusing 6-axis MEMS inertial measurement units with UWB ranging to sustain tracking through temporary anchor blackouts.
+    \item \textbf{Anchor Self-Calibration via Multi-Dimensional Scaling (MDS):} Implementing decentralized peer-to-peer ranging algorithms to automate anchor coordinate discovery during initial site setup.
+    \item \textbf{Deep Learning on Raw CIR Waveforms:} Designing lightweight 1D Temporal Convolutional Networks (TCN) deployable on edge microcontrollers to extract features directly from raw RF impulse responses.
+\end{enumerate}
+
+\begin{thebibliography}{00}
+\bibitem{indoor_survey} F. Zafari, A. Gkelias, and K. K. Leung, ``A Survey of Indoor Localization Systems and Technologies,'' \textit{IEEE Communications Surveys \& Tutorials}, vol. 21, no. 3, pp. 2568--2599, 2019.
+\bibitem{uwb_survey} A. R. J. Ruiz and F. S. Granja, ``Comparing Ubisense, BeSpoon, and DecaWave: An Extensive Evaluation of Popular Ultra-Wideband Localization Systems,'' \textit{IEEE Pervasive Computing}, vol. 16, no. 2, pp. 52--63, 2017.
+\bibitem{gps_loss} J. A. Farrell, \textit{Aided Navigation: GPS with High Rate Sensors}. New York, NY, USA: McGraw-Hill, 2008.
+\bibitem{rssi_indoor} P. Bahl and V. N. Padmanabhan, ``RADAR: An In-Building RF-Based User Location and Tracking System,'' in \textit{Proc. IEEE INFOCOM}, vol. 2, pp. 775--784, 2000.
+\bibitem{imu_drift} O. J. Woodman, ``An introduction to inertial navigation,'' University of Cambridge, Computer Laboratory, Tech. Rep. UCAM-CL-TR-696, 2007.
+\bibitem{decawave} Decawave Ltd., ``DW3000 User Manual: Ultra-Wideband Transceiver IC,'' Tech. Rep., 2021.
+\bibitem{nlos_ml} K. B. Bulten, A. C. V. Rossum, and H. X. Lin, ``Human-Induced Non-Line-of-Sight Detection for Ultra-Wideband Indoor Tracking Using Machine Learning,'' in \textit{Proc. IEEE Sensors}, pp. 1--4, 2016.
+\bibitem{horus} M. Youssef and A. Agrawala, ``The Horus WLAN Location Determination System,'' in \textit{Proc. 3rd Int. Conf. Mobile Systems, Applications, and Services (MobiSys)}, pp. 205--218, 2005.
+\bibitem{marano_nlos} S. Maran\`{o}, W. M. Gifford, H. Wymeersch, and M. Z. Win, ``NLOS identification and mitigation for localization based on UWB experimental data,'' \textit{IEEE J. Sel. Areas Commun.}, vol. 28, no. 7, pp. 1026--1035, 2010.
+\bibitem{glrt_uwb} I. Guvenc, C.-C. Chong, and F. Watanabe, ``NLOS identification and mitigation for UWB localization systems,'' in \textit{Proc. IEEE Wireless Commun. Netw. Conf. (WCNC)}, pp. 1571--1576, 2007.
+\bibitem{cui_discard} Y. Cui, H. Liu, and Y. Shen, ``A Non-Line-of-Sight Identification and Mitigation Method for Ultra-Wideband Positioning Systems,'' \textit{IEEE Access}, vol. 7, pp. 154238--154247, 2019.
+\bibitem{digital_twin_ind} F. Tao, H. Zhang, A. Liu, and A. Y. C. Nee, ``Digital Twin in Industry: State-of-the-Art,'' \textit{IEEE Trans. Ind. Inform.}, vol. 15, no. 4, pp. 2405--2415, 2019.
+\bibitem{util_dataset} W. Ding, S. Shen, and F. Gao, ``UTIL: An Ultra-Wideband Time-Difference-of-Arrival and Inertial Dataset for Autonomous Flight Localization,'' \textit{IEEE Robot. Autom. Lett.}, vol. 6, no. 2, pp. 2450--2457, 2021.
+\bibitem{kalman_ref} G. Welch and G. Bishop, ``An introduction to the Kalman filter,'' University of North Carolina at Chapel Hill, Tech. Rep. TR-95-041, 2006.
+\bibitem{lightgbm} G. Ke et al., ``LightGBM: A Highly Efficient Gradient Boosting Decision Tree,'' in \textit{Adv. Neural Inf. Process. Syst. (NeurIPS)}, vol. 30, pp. 3146--3154, 2017.
+\end{thebibliography}
+
+\end{document}

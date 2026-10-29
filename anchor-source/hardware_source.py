@@ -101,7 +101,19 @@ class HardwareAnchorSource:
         self.assembler = CycleAssembler(len(self.anchor_ids), WINDOW_FRACTION / rate_hz)
         self._seq = defaultdict(int)
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.bind((LISTEN_HOST, LISTEN_PORT))
+        try:
+            self._sock.bind((LISTEN_HOST, LISTEN_PORT))
+        except OSError as exc:
+            if getattr(exc, "errno", None) in (98, 10048, 48):  # EADDRINUSE (Linux/Win/Mac)
+                print(
+                    f"\n[gateway ERROR] Port {LISTEN_PORT} is already in use!\n"
+                    f"A gateway is already running (e.g. rtls-gateway.service).\n"
+                    f"To free port {LISTEN_PORT}, run:\n"
+                    f"    sudo systemctl stop rtls-gateway\n"
+                    f"Or kill any running process on port {LISTEN_PORT}:\n"
+                    f"    pkill -f 'anchor-source/main.py' || sudo fuser -k {LISTEN_PORT}/udp\n"
+                )
+            raise
         self._sock.settimeout(self.assembler.window_s / 4)   # wake up to release timed-out cycles
         self._stop = threading.Event()
         if BEACON_PORT:

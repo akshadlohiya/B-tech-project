@@ -6,7 +6,10 @@ import threading
 import time
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -122,8 +125,11 @@ def test_closed_source_frees_the_port_for_a_map_reload(monkeypatch):
     monkeypatch.setattr(hardware_source, "LISTEN_PORT", port)
     site = {"anchors": [{"id": a} for a in ANCHORS[:3]], "ranging": {"updateRateHz": 5}}
     old = HardwareAnchorSource(site)
-    with pytest.raises(OSError):          # without close() the reload cannot bind
+    try:
         HardwareAnchorSource(site)
+        assert False, "expected OSError when binding port twice"
+    except OSError:
+        pass
     old.close()
     HardwareAnchorSource(site).close()    # rebuilt source binds the same port
 
@@ -148,6 +154,26 @@ def test_gateway_beacons_its_port_until_closed(monkeypatch):
             rx.recvfrom(256)
         except socket.timeout:
             break
-    with pytest.raises(socket.timeout):
+    try:
         rx.recvfrom(256)              # silent after close
+        assert False, "expected socket timeout after close"
+    except (socket.timeout, TimeoutError):
+        pass
     rx.close()
+
+
+if __name__ == "__main__":
+    test_full_cycle_released_immediately()
+    test_silent_anchor_does_not_freeze_the_tag()
+    test_repeat_anchor_starts_a_new_cycle_without_mixing()
+    test_cycle_with_too_few_anchors_is_dropped()
+    test_tags_are_assembled_independently()
+    test_cycle_time_is_its_first_packet()
+    test_site_with_fewer_than_three_anchors_still_releases()
+    class _MockMonkeyPatch:
+        def setattr(self, obj, name, value):
+            setattr(obj, name, value)
+    test_udp_source_keeps_tracking_with_a_silent_anchor(_MockMonkeyPatch())
+    test_closed_source_frees_the_port_for_a_map_reload(_MockMonkeyPatch())
+    test_gateway_beacons_its_port_until_closed(_MockMonkeyPatch())
+    print("All test_hardware_source tests passed!")

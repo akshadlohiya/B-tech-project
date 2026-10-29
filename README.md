@@ -41,7 +41,7 @@ The dashboard is now a standalone indoor-mapping tool (Mappedin-style):
   hot-reloads the simulator, solver and 3D twin.
 - **Live 3D viewer** — open `?map=KEY` to watch that map's live tracking; **Share** the key so
   anyone can view. Maps live in the backend store (`backend/maps/`), independent of the code.
-- The gateway runs one map at a time: `MAP=<key> python main.py`.
+- The gateway runs every map concurrently by default; `MAP=<key>[,<key>...] python main.py` limits it.
 
 ## Status
 **Phases 1, 3, 4, 5 complete:**

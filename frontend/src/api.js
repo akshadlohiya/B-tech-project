@@ -16,10 +16,11 @@ export const getMap = (key) => fetch(`${API}/api/maps/${key}`).then(json).then((
 export const saveMap = (key, map) => fetch(`${API}/api/maps/${key}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(map) }).then(json);
 export const deleteMap = (key) => fetch(`${API}/api/maps/${key}`, { method: 'DELETE' }).then(json);
 
-// Routing is just query params: ?map=KEY&mode=view|edit  (no map => manager).
+// Routing is just query params: ?map=KEY&mode=view|edit|classic (no map => manager).
 export const parseRoute = () => {
   const p = new URLSearchParams(window.location.search);
-  return { map: p.get('map'), mode: p.get('mode') || 'view' };
+  const mode = p.get('mode') || (p.get('classic') ? 'classic' : 'view');
+  return { map: p.get('map'), mode };
 };
 export const goTo = ({ map, mode }) => {
   const p = new URLSearchParams();

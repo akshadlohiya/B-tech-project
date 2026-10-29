@@ -3,22 +3,28 @@
 Loads the shared site config, picks a data source (sim or hardware), solves each
 reading into a position estimate, and streams both to the backend hub.
 
-    python main.py                 # simulated anchors (default)
-    SOURCE=hardware python main.py # real MaUWB_DW3000 nodes over UDP
+    python main.py                 # simulate every map in the library, concurrently
+    MAP=demo,abc123 python main.py # only these maps
+    SOURCE=hardware python main.py # real MaUWB_DW3000 nodes over UDP (one map)
 
 On real hardware this same process runs on the gateway/Pi: it ingests readings and
 runs the identical solver — nothing downstream changes.
 
-It also hot-reloads: when the dashboard edits the site (backend broadcasts
-`site_updated`), the source and engine rebuild live without a restart.
+Each map runs on its own thread. It also hot-reloads: when the dashboard edits a
+map (backend broadcasts `map_updated`), that map's source and engine rebuild live,
+and maps created or deleted in the library (`maps_changed`) start or stop without
+a restart. Maps fed by another producer (`meta.producer`, e.g. the TDOA streamer)
+are skipped.
 """
 from __future__ import annotations
 
 import importlib.util
 import os
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
 _PROJECT_ROOT = _HERE.parent
@@ -56,27 +62,138 @@ LocationEngine = engine.LocationEngine
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:3000")
 SOURCE_KIND = os.environ.get("SOURCE", "sim")
-MAP_KEY = os.environ.get("MAP", "demo")   # which map this gateway runs
+# Which maps this gateway runs: "all" (every map in the library, picking up new
+# ones as they are created), or a comma-separated list of keys. Real hardware
+# listens on a single UDP port, so it can only feed one map.
+MAP_SPEC = os.environ.get("MAP", "all" if SOURCE_KIND == "sim" else "demo")
 
 sio = socketio.Client(reconnection=True)
-_reload_requested = False
+_runners: dict = {}            # mapKey -> MapRunner
+_runners_lock = threading.Lock()
+_sync_requested = threading.Event()
 
 
-def load_map(key: str) -> dict:
-    """Fetch the map document from the backend; fall back to the local file."""
+def load_map(key: str, fallback: bool = True) -> Optional[dict]:
+    """Fetch the map document from the backend; optionally fall back to the local file."""
     try:
         r = requests.get(f"{BACKEND_URL}/api/maps/{key}", timeout=5)
         r.raise_for_status()
         return r.json()
     except Exception as exc:
+        if not fallback:
+            print(f"[gateway] could not fetch map '{key}' ({exc})")
+            return None
         print(f"[gateway] could not fetch map '{key}' ({exc}); falling back to local site.json")
         return load_site()
+
+
+def wanted_keys() -> set:
+    """The map keys this gateway should be running right now."""
+    if MAP_SPEC.strip().lower() != "all":
+        return {k.strip() for k in MAP_SPEC.split(",") if k.strip()}
+    try:
+        r = requests.get(f"{BACKEND_URL}/api/maps", timeout=5)
+        r.raise_for_status()
+    except Exception as exc:
+        print(f"[gateway] could not list maps ({exc})")
+        with _runners_lock:
+            return set(_runners)   # keep whatever is running
+    # Maps fed by another producer (e.g. the TDOA/EKF streamer) are left alone.
+    return {m["key"] for m in r.json() if m.get("producer") in (None, "gateway")}
+
+
+class MapRunner(threading.Thread):
+    """Simulates/solves one map and streams it to the hub, on its own thread."""
+
+    def __init__(self, key: str):
+        super().__init__(name=f"map-{key}", daemon=True)
+        self.key = key
+        self.stop_event = threading.Event()
+        self.reload_requested = False
+
+    def _build(self):
+        site = load_map(self.key, fallback=(self.key == "demo"))
+        if site is None:
+            return None
+        source = make_source(SOURCE_KIND, site)
+        engine = LocationEngine(site)
+        print(f"[gateway] map='{site.get('meta', {}).get('name', self.key)}' key='{self.key}' "
+              f"source='{source.name}' tags={len(site['tags'])} anchors={len(site['anchors'])}")
+        print(f"[gateway] [{self.key}] NLOS handling: {engine.nlos_note}")
+        return source, engine, source.cycles()
+
+    def run(self) -> None:
+        try:
+            built = self._build()
+            if built is None:
+                return
+            source, engine, cycles = built
+            while not self.stop_event.is_set():
+                if self.reload_requested:
+                    self.reload_requested = False
+                    source.close()   # hardware: free UDP 9000 before the new source binds it
+                    built = self._build()
+                    if built is None:
+                        return
+                    source, engine, cycles = built
+
+                reading, truth = next(cycles)
+                reading_dict = reading.to_dict()
+                reading_dict["mapKey"] = self.key
+                estimate = engine.estimate(reading_dict, truth)
+                if estimate is not None:
+                    estimate["mapKey"] = self.key
+                alerts = (estimate["alerts"] if estimate is not None else []) + engine.check_stale(reading_dict["t"])
+                # ride out transient disconnects: the client auto-reconnects, so skip
+                # emitting mid-reconnect rather than crashing on BadNamespaceError.
+                if sio.connected:
+                    try:
+                        sio.emit("reading", reading_dict)
+                        if estimate is not None:
+                            sio.emit("update_location", estimate)
+                        for alert in alerts:
+                            sio.emit("alert", {**alert, "mapKey": self.key})
+                    except Exception:
+                        pass
+        except StopIteration:
+            pass
+        except Exception as exc:   # one bad map must not take the others down
+            print(f"[gateway] map '{self.key}' stopped: {exc!r}")
+        finally:
+            try:
+                source.close()
+            except Exception:
+                pass
+            with _runners_lock:
+                if _runners.get(self.key) is self:
+                    del _runners[self.key]
+
+
+def sync_runners() -> None:
+    """Start runners for new maps and stop runners for deleted ones."""
+    want = wanted_keys()
+    if SOURCE_KIND != "sim" and len(want) > 1:
+        print(f"[gateway] SOURCE={SOURCE_KIND} can only feed one map; set MAP=<key> (got {sorted(want)})")
+        want = set(sorted(want)[:1])
+    with _runners_lock:
+        for key in set(_runners) - want:
+            print(f"[gateway] map '{key}' removed — stopping")
+            _runners.pop(key).stop_event.set()
+        for key in want - set(_runners):
+            runner = _runners[key] = MapRunner(key)
+            runner.start()
+            if sio.connected:
+                sio.emit("join_map", key)   # so we receive map_updated for this map
 
 
 @sio.event
 def connect():
     print(f"[gateway] connected to hub at {BACKEND_URL}")
-    sio.emit("join_map", MAP_KEY)   # so we receive map_updated for our map
+    with _runners_lock:
+        keys = list(_runners)
+    for key in keys:
+        sio.emit("join_map", key)
+    _sync_requested.set()   # pick up maps created while we were disconnected
 
 
 @sio.event
@@ -86,26 +203,20 @@ def disconnect():
 
 @sio.on("map_updated")
 def _on_map_updated(data=None):
-    global _reload_requested
-    if not data or data.get("key") == MAP_KEY:
-        _reload_requested = True
-        print(f"[gateway] map '{MAP_KEY}' changed — reloading source + engine")
+    key = (data or {}).get("key")
+    with _runners_lock:
+        targets = [r for k, r in _runners.items() if key is None or k == key]
+    for runner in targets:
+        runner.reload_requested = True
+        print(f"[gateway] map '{runner.key}' changed — reloading source + engine")
 
 
-def _build():
-    site = load_map(MAP_KEY)
-    source = make_source(SOURCE_KIND, site)
-    engine = LocationEngine(site)
-    print(f"[gateway] map='{site.get('meta', {}).get('name', MAP_KEY)}' key='{MAP_KEY}' "
-          f"source='{source.name}' tags={len(site['tags'])} anchors={len(site['anchors'])}")
-    print(f"[gateway] NLOS handling: {engine.nlos_note}")
-    return source, engine, source.cycles()
+@sio.on("maps_changed")
+def _on_maps_changed(data=None):
+    _sync_requested.set()
 
 
 def main() -> None:
-    global _reload_requested
-    source, engine, cycles = _build()
-
     while True:
         try:
             sio.connect(BACKEND_URL)
@@ -116,32 +227,16 @@ def main() -> None:
 
     try:
         while True:
-            if _reload_requested:
-                _reload_requested = False
-                source.close()   # hardware: free UDP 9000 before the new source binds it
-                source, engine, cycles = _build()
-
-            reading, truth = next(cycles)
-            reading_dict = reading.to_dict()
-            reading_dict["mapKey"] = MAP_KEY
-            estimate = engine.estimate(reading_dict, truth)
-            if estimate is not None:
-                estimate["mapKey"] = MAP_KEY
-            alerts = (estimate["alerts"] if estimate is not None else []) + engine.check_stale(reading_dict["t"])
-            # ride out transient disconnects: the client auto-reconnects, so skip
-            # emitting mid-reconnect rather than crashing on BadNamespaceError.
-            if sio.connected:
-                try:
-                    sio.emit("reading", reading_dict)
-                    if estimate is not None:
-                        sio.emit("update_location", estimate)
-                    for alert in alerts:
-                        sio.emit("alert", {**alert, "mapKey": MAP_KEY})
-                except Exception:
-                    pass
-    except (KeyboardInterrupt, StopIteration):
+            sync_runners()
+            # resync on a create/delete broadcast, or every 10 s as a fallback
+            _sync_requested.wait(timeout=10)
+            _sync_requested.clear()
+    except KeyboardInterrupt:
         pass
     finally:
+        with _runners_lock:
+            for runner in _runners.values():
+                runner.stop_event.set()
         sio.disconnect()
 
 

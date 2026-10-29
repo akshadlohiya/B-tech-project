@@ -11,7 +11,10 @@ import os
 import random
 import sys
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "shared"))
