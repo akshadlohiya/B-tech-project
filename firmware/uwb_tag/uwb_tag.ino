@@ -4,8 +4,8 @@
 // one UDP/JSON datagram on port 9000, the format anchor-source/hardware_source.py
 // parses:
 //   {"tag":"T1","anchor":"A1","range":2.41,"rxPower":-83.2,"fpPower":-86.1}
-// By default it sends to the subnet broadcast address, so the Pi's hotspot IP
-// can change without reflashing. Set PI_IP in secrets.h to send to one host.
+// It follows the gateway's beacon, so the Pi's hotspot IP can change without
+// reflashing; see checkBeacon().
 //
 // Library: jremington/UWB-Indoor-Localization_Arduino (DW1000_library).
 
@@ -23,6 +23,7 @@
 
 #define TAG_ID    "T1"         // must match the tag id in the viewer's map
 #define UDP_PORT  9000         // gateway's UWB_UDP_PORT
+#define BEACON_PORT 9001       // gateway announces itself here
 #define MAX_RANGE_M 50.0f      // drop obviously bad ranges
 
 // ---- wiring (same on every node) -------------------------------------------
@@ -35,8 +36,38 @@
 
 char tag_addr[] = "7D:00:22:EA:82:60:3B:9C";
 
+#define LOG_PREFIX "[T1]"
+
 WiFiUDP udp;
 IPAddress target;
+WiFiUDP beacon;
+
+// Where packets go. The gateway beacons {"rtls":"gateway","port":9000} to port 9001 every 2 s
+// and we send to whoever beacons, so the Pi's hotspot IP can change freely (phone hotspots
+// hand out new addresses and block mDNS). Until a beacon arrives: PI_IP, else broadcast.
+void startTarget() {
+#ifdef PI_IP
+  target.fromString(PI_IP);
+  Serial.printf("%s sending to %s:%d (PI_IP, until a gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+#else
+  target = WiFi.broadcastIP();
+  Serial.printf("%s sending to %s:%d (broadcast, until a gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+#endif
+  beacon.begin(BEACON_PORT);
+}
+
+void checkBeacon() {
+  if (!beacon.parsePacket()) return;
+  char buf[64];
+  int n = beacon.read(buf, sizeof buf - 1);
+  buf[n > 0 ? n : 0] = 0;
+  IPAddress from = beacon.remoteIP();
+  if (strstr(buf, "\"rtls\"") && strstr(buf, "\"gateway\"") && from != target) {   // any JSON spacing
+    target = from;
+    Serial.printf("%s sending to %s:%d (gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+  }
+}
+
 uint32_t rangeCount[3] = {0, 0, 0};   // per-anchor ranges since last rate report
 uint32_t lastReport = 0;
 
@@ -49,13 +80,8 @@ void connectWiFi() {
     delay(500);
     Serial.print(".");
   }
-#ifdef PI_IP
-  target.fromString(PI_IP);
-#else
-  target = WiFi.broadcastIP();
-#endif
-  Serial.printf("\n[T1] ip %s -> sending to %s:%d\n",
-                WiFi.localIP().toString().c_str(), target.toString().c_str(), UDP_PORT);
+  Serial.printf("\n%s ip %s\n", LOG_PREFIX, WiFi.localIP().toString().c_str());
+  startTarget();
 }
 
 void newRange() {
@@ -104,6 +130,7 @@ void setup() {
 
 void loop() {
   DW1000Ranging.loop();
+  checkBeacon();
 
   // Every 5 s print ranges/s per anchor: use the lowest as ranging.updateRateHz.
   uint32_t now = millis();

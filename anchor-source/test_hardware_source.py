@@ -126,3 +126,28 @@ def test_closed_source_frees_the_port_for_a_map_reload(monkeypatch):
         HardwareAnchorSource(site)
     old.close()
     HardwareAnchorSource(site).close()    # rebuilt source binds the same port
+
+
+def test_gateway_beacons_its_port_until_closed(monkeypatch):
+    rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rx.bind(("127.0.0.1", 0))
+    rx.settimeout(2.0)
+    monkeypatch.setattr(hardware_source, "LISTEN_HOST", "127.0.0.1")
+    monkeypatch.setattr(hardware_source, "LISTEN_PORT", 0)
+    monkeypatch.setattr(hardware_source, "BEACON_ADDR", "127.0.0.1")
+    monkeypatch.setattr(hardware_source, "BEACON_PORT", rx.getsockname()[1])
+    monkeypatch.setattr(hardware_source, "BEACON_INTERVAL_S", 0.05)
+    src = HardwareAnchorSource({"anchors": [{"id": "A1"}], "ranging": {"updateRateHz": 5}})
+    data, _ = rx.recvfrom(256)
+    assert json.loads(data) == {"rtls": "gateway", "port": 0}
+    src.close()
+    time.sleep(0.2)
+    rx.settimeout(0.3)
+    while True:                       # drain anything sent before close() took effect
+        try:
+            rx.recvfrom(256)
+        except socket.timeout:
+            break
+    with pytest.raises(socket.timeout):
+        rx.recvfrom(256)              # silent after close
+    rx.close()

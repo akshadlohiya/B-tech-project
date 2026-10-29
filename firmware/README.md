@@ -51,7 +51,8 @@ The DW1000 library lives in `~/Arduino/libraries/DW1000`. On Linux, uploads need
 ## Before the DW1000s are wired: `wifi_test`
 
 Flash `wifi_test` on a bare ESP32 (copy `secrets.example.h` to `secrets.h` first). It sends the
-same packets as the tag for a T1 walking a 1.5 m circle. In the viewer's map, place
+same packets as the tag for a T1 walking a 1.5 m circle. Set `PI_IP` in `secrets.h` to the
+server's IP: on a phone hotspot broadcast lost ~1/3 of packets (1.3 vs 5.1 positions/s). In the viewer's map, place
 **A1 (-3, 2.4, -3)**, **A2 (3, 2.4, -3)**, **A3 (0, 2.4, 3)** and add tag **T1**. If T1 circles
 in the viewer, Wi-Fi, hotspot broadcast, gateway and viewer all work. The blue LED blinks on
 each send.
@@ -83,3 +84,5 @@ Then follow `PI_SETUP.md` (step 6 onwards) to bring the Pi onto the hotspot and 
 | Tag never prints `anchor found` | Anchor powered? Same `MODE_LONGDATA_RANGE_LOWPOWER` on both? IRQ wire on GPIO34 |
 | Ranges off by a constant | Antenna delay (step 3) |
 | Serial OK but Pi gets nothing | Pi on the same hotspot? `sudo tcpdump -n udp port 9000`. Some phones block broadcast: set `PI_IP` in `secrets.h` |
+| Tag sends to an old IP after the Pi restarted | The tag follows the gateway's beacon (UDP 9001, every 2 s): check the serial for `(gateway beacon)` and that the gateway is running |
+| Tag updates ~1 Hz instead of 5 Hz | Still broadcasting: no beacon heard yet. Start the gateway, or set `PI_IP` (unicast is retried) |

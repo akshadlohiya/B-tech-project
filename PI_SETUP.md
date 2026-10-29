@@ -81,6 +81,11 @@ range to the hotspot's **broadcast** address on port 9000, so the Pi's IP never 
 ```
 The anchors only need USB power. Only the tag and the Pi use Wi-Fi.
 
+The gateway also announces itself every 2 s (UDP broadcast `{"rtls":"gateway","port":9000}` to port
+**9001**). The tag sends to whoever announces, so the Pi's hotspot IP can change without reflashing
+(phone hotspots hand out new addresses and block `.local` names). Run only **one** gateway on the
+hotspot, or the tag follows whichever announced last.
+
 6. **Put the Pi on the phone hotspot** (same one as in the tag's `secrets.h`):
    ```bash
    sudo nmcli dev wifi connect "<SSID>" password "<PASSWORD>"
@@ -112,14 +117,29 @@ The anchors only need USB power. Only the tag and the Pi use Wi-Fi.
     `http://<pi-ip>:5173/?map=<map-key>` and T1 should move with the tag.
 11. **Mount the anchors** about 2–2.5 m high in a wide triangle (not in a line) with a clear view of
     the tracked area. Re-measure their positions and update them in **✎ Edit**.
-12. **Calibrate the AI's power baseline.** With the tag in clear line of sight of all anchors, log
-    a minute of packets and take the median `rxPower - fpPower`. Put its negative in the map's
-    `ranging.power.fpToRxDeltaLosDbm` (a 9 dB gap → `-9`) using the snippet in step 8. The default
+12. **Calibrate the AI's power baseline.** With the tag in clear line of sight of all anchors,
+    record a minute and read off the suggested value (`calibration/hw_log.py` works from the Pi or
+    any laptop on the hotspot, while the gateway runs):
+    ```bash
+    .venv/bin/python calibration/hw_log.py record --backend http://<pi-ip>:3000 --map <map-key> \
+        --label LOS --seconds 60 --out calibration/logs/baseline.csv
+    .venv/bin/python calibration/hw_log.py baseline calibration/logs/baseline.csv
+    ```
+    Put the printed `fpToRxDeltaLosDbm` into the map using the snippet in step 8. The default
     `-3` is a simulator placeholder. Until this is measured, or if positions look worse, set
     `ranging.nlosModel` to `"rule"`.
-13. **Check accuracy.** Stand the tag on 5+ tape-marked points and record the viewer's error.
-    A constant range offset per anchor means its `ANTENNA_DELAY` needs recalibrating in the
-    firmware. The map's `antennaDelayBiasM` only affects the simulator.
+13. **Check accuracy.** Tape 5+ points on the floor and list them in a `points.csv`
+    (`label,x,z` in metres, map frame). Record ~30 s with the tag on each point (same `--out` file,
+    a different `--label` each time), then:
+    ```bash
+    .venv/bin/python calibration/hw_log.py accuracy calibration/logs/run1.csv --points points.csv \
+        --plot report/hw_accuracy_cdf.png
+    .venv/bin/python calibration/hw_log.py ranges calibration/logs/run1.csv --label P1 --at <x>,<tag-h>,<z> \
+        --backend http://<pi-ip>:3000 --map <map-key>
+    ```
+    `accuracy` prints RMSE/P50/P90/P95 and writes a CDF chart for the report. `ranges` shows each
+    anchor's offset at a known point; a steady offset is antenna delay, fixed in that anchor's
+    `ANTENNA_DELAY` (the map's `antennaDelayBiasM` only affects the simulator).
 
 **Anchor dropout.** The gateway releases a tag's reading once every anchor has reported, or
 80% of one ranging period after the cycle's first packet if at least 3 have. With exactly 3

@@ -15,6 +15,7 @@
 #endif
 
 #define UDP_PORT  9000
+#define BEACON_PORT 9001       // gateway announces itself here
 #define LED_PIN   2            // onboard blue LED on most DevKits
 
 struct Anchor { const char *id; float x, y, z; };
@@ -28,8 +29,37 @@ const float RADIUS_M = 1.5;
 const float LAP_S = 20.0;      // one circle every 20 s
 const uint32_t CYCLE_MS = 200; // 5 Hz, the map's default updateRateHz
 
+#define LOG_PREFIX "[test]"
+
 WiFiUDP udp;
 IPAddress target;
+WiFiUDP beacon;
+
+// Where packets go. The gateway beacons {"rtls":"gateway","port":9000} to port 9001 every 2 s
+// and we send to whoever beacons, so the Pi's hotspot IP can change freely (phone hotspots
+// hand out new addresses and block mDNS). Until a beacon arrives: PI_IP, else broadcast.
+void startTarget() {
+#ifdef PI_IP
+  target.fromString(PI_IP);
+  Serial.printf("%s sending to %s:%d (PI_IP, until a gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+#else
+  target = WiFi.broadcastIP();
+  Serial.printf("%s sending to %s:%d (broadcast, until a gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+#endif
+  beacon.begin(BEACON_PORT);
+}
+
+void checkBeacon() {
+  if (!beacon.parsePacket()) return;
+  char buf[64];
+  int n = beacon.read(buf, sizeof buf - 1);
+  buf[n > 0 ? n : 0] = 0;
+  IPAddress from = beacon.remoteIP();
+  if (strstr(buf, "\"rtls\"") && strstr(buf, "\"gateway\"") && from != target) {   // any JSON spacing
+    target = from;
+    Serial.printf("%s sending to %s:%d (gateway beacon)\n", LOG_PREFIX, target.toString().c_str(), UDP_PORT);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -42,16 +72,12 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
-#ifdef PI_IP
-  target.fromString(PI_IP);
-#else
-  target = WiFi.broadcastIP();
-#endif
-  Serial.printf("\n[test] ip %s -> sending to %s:%d\n",
-                WiFi.localIP().toString().c_str(), target.toString().c_str(), UDP_PORT);
+  Serial.printf("\n%s ip %s\n", LOG_PREFIX, WiFi.localIP().toString().c_str());
+  startTarget();
 }
 
 void loop() {
+  checkBeacon();
   float a = 2 * PI * (millis() / 1000.0f) / LAP_S;
   float tx = RADIUS_M * cosf(a), tz = RADIUS_M * sinf(a);
 
