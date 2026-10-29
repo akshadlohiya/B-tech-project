@@ -10,7 +10,7 @@ opens the viewer.
 | Backend `backend/server.js` (systemd `rtls-server`) | TCP 3000 | gateway + browsers |
 | Viewer (`npm run dev -- --host`) | TCP 5173 | any phone / laptop browser |
 
-Pi: user `akshad`, address `10.1.238.88` (DHCP; check with `hostname -I`),
+Pi: user `akshad`, address `akshad.local` (or DHCP IP like `10.1.238.88`; check with `hostname -I`),
 project at `~/B-tech-project`, Raspberry Pi OS (Debian 13, aarch64), Python 3.13, Node 20.
 
 ## Status (2026-10-22)
