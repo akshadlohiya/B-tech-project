@@ -8,6 +8,7 @@ Four nodes, each an ESP32 DevKit wired to one DW1000:
 | Anchor A2 | `uwb_anchor` | `ANCHOR_NUM 2` | `A2` | no |
 | Anchor A3 | `uwb_anchor` | `ANCHOR_NUM 3` | `A3` | no |
 | Tag T1 | `uwb_tag` | `secrets.h` | `7D` | yes, phone hotspot |
+| any ESP32 | `wifi_test` | `secrets.h` | (no radio) | yes, fake T1 for testing the Pi path |
 
 The tag ranges to each anchor (DS-TWR) and sends one UDP/JSON datagram per range to
 port 9000 on the hotspot's broadcast address. The Pi gateway (`SOURCE=hardware`) picks
@@ -33,6 +34,27 @@ Keep the jumpers under 10 cm, and put a 10 µF cap across VDD and GND near the m
 1. Arduino IDE → Boards Manager → install **esp32 by Espressif**. Board: **ESP32 Dev Module**.
 2. Download <https://github.com/jremington/UWB-Indoor-Localization_Arduino>. Zip the
    `DW1000_library` folder and add it with Sketch → Include Library → Add .ZIP Library.
+
+### Command line instead of the IDE (`arduino-cli`, installed on Nahush's laptop)
+
+Tested with ESP32 core 3.3.12: all three sketches compile. Plug in a board, then:
+```bash
+arduino-cli board list                      # find the port, e.g. /dev/ttyUSB0
+arduino-cli compile --upload -b esp32:esp32:esp32 -p /dev/ttyUSB0 uwb_anchor   # build + flash
+arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200   # then press EN to see the boot lines
+```
+`upload` on its own only flashes an existing build, so use `compile --upload`. The ESP32's USB chip
+is a CH340 on these boards; if its port vanishes on Ubuntu, `sudo apt remove brltty`.
+The DW1000 library lives in `~/Arduino/libraries/DW1000`. On Linux, uploads need the user in the
+`dialout` group (`sudo usermod -aG dialout $USER`, then log out and back in).
+
+## Before the DW1000s are wired: `wifi_test`
+
+Flash `wifi_test` on a bare ESP32 (copy `secrets.example.h` to `secrets.h` first). It sends the
+same packets as the tag for a T1 walking a 1.5 m circle. In the viewer's map, place
+**A1 (-3, 2.4, -3)**, **A2 (3, 2.4, -3)**, **A3 (0, 2.4, 3)** and add tag **T1**. If T1 circles
+in the viewer, Wi-Fi, hotspot broadcast, gateway and viewer all work. The blue LED blinks on
+each send.
 
 ## Bring-up order
 
