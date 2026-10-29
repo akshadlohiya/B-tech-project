@@ -1,0 +1,15 @@
+[Unit]
+Description=RTLS 3D viewer (Vite, port 5173, reachable from any device on the network)
+After=rtls-server.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/frontend
+# login shell so npm is found even when Node was installed with nvm
+ExecStart=/bin/bash -lc 'exec npm run dev -- --host --port 5173 --strictPort'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

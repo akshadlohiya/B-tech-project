@@ -45,26 +45,16 @@ project at `~/B-tech-project`, Raspberry Pi OS (Debian 13, aarch64), Python 3.13
    and prints nothing more until tags are solved. (`power-gap rule (fallback: ...)` means the AI
    model could not load, usually because scikit-learn is missing. Tracking still works.)
 
-   To start it at boot, save as `/etc/systemd/system/rtls-gateway.service`, then
-   `sudo systemctl enable --now rtls-gateway` (logs: `journalctl -u rtls-gateway -f`):
-   ```ini
-   [Unit]
-   Description=RTLS UWB gateway (anchors -> solver -> backend)
-   After=rtls-server.service
-   Wants=rtls-server.service
-
-   [Service]
-   User=akshad
-   WorkingDirectory=/home/akshad/B-tech-project/anchor-source
-   Environment=SOURCE=hardware
-   Environment=PYTHONUNBUFFERED=1
-   ExecStart=/home/akshad/B-tech-project/.venv/bin/python main.py
-   Restart=always
-   RestartSec=5
-
-   [Install]
-   WantedBy=multi-user.target
+   **To start the gateway and the viewer at boot** (recommended; the demo is then just "power on"):
+   ```bash
+   cd ~/B-tech-project && git pull
+   sudo deploy/install-services.sh <map-key>        # e.g. 4f41ed2f96 for the Lab map
    ```
+   It stops any gateway or viewer started by hand, installs `rtls-gateway` (with `SOURCE=hardware`
+   and that map) and `rtls-viewer` from `deploy/`, enables both with `rtls-server`, and prints the
+   viewer URL. Re-run it to switch maps. Logs: `journalctl -u rtls-gateway -f`. After a `git pull`:
+   `sudo systemctl restart rtls-gateway rtls-viewer`. While the services run, don't start
+   `main.py` or `npm run dev` by hand (`Address already in use`).
 5. **Viewer for other devices**:
    ```bash
    cd ~/B-tech-project/frontend && npm run dev -- --host

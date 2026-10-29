@@ -1,0 +1,17 @@
+[Unit]
+Description=RTLS UWB gateway (tag ranges -> solver -> backend, beacon on UDP 9001)
+After=rtls-server.service network-online.target
+Wants=rtls-server.service network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/anchor-source
+Environment=SOURCE=hardware
+Environment=MAP=@MAP@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@REPO@/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
