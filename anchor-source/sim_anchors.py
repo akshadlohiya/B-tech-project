@@ -114,7 +114,12 @@ class SimAnchorSource:
             excess = 0.0
             for w in blockers:
                 m = self.materials.get(w.get("material", ""))
-                if m:
+                if m and m.get("biasSamplesM"):
+                    # empirical: one real UTIL per-recording mean, so the simulated
+                    # mean/median match the data instead of a P10-P90 uniform
+                    excess += random.choice(m["biasSamplesM"])
+                    noise_std = max(noise_std, m["noiseStdM"])
+                elif m:
                     excess += random.uniform(m["biasMinM"], m["biasMaxM"])
                     noise_std = max(noise_std, m["noiseStdM"])
                 else:

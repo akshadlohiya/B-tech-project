@@ -310,7 +310,8 @@
     "nlosModelNote": "\"ai\": learned bias model from ai-module (shortens + down-weights blocked ranges); \"rule\": power-gap down-weighting only. The AI aligns gaps to this site's LOS baseline (-power.fpToRxDeltaLosDbm), so on hardware set that to the measured median LOS gap.",
     "kalman": {
       "processNoiseStd": 2.0,
-      "measurementNoiseStd": 0.5
+      "measurementNoiseStd": 0.1,
+      "note": "sigma_m = 0.1 m matches the ~7-12 cm per-fix error; 0.5 m over-trusted the motion model (report revision, item 2.6)."
     },
     "note": "DS-TWR (double-sided two-way ranging) is what the MaUWB_DW3000 firmware performs; it cancels device clock drift, so no time synchronisation between anchors is required (see Project Diary, 01-04 Apr 2026). Values below are tuned to typical DW3000 behaviour and should be re-tuned against real hardware (provenance: guessed).",
     "losNoiseStdM": 0.054,
@@ -334,18 +335,61 @@
       "metal": {
         "biasMinM": 0.198,
         "biasMaxM": 0.583,
-        "noiseStdM": 0.06
+        "noiseStdM": 0.06,
+        "biasSamplesM": [
+          0.18,
+          0.214,
+          0.237,
+          0.306,
+          0.372,
+          0.584
+        ]
       },
       "wood": {
         "biasMinM": 0.026,
         "biasMaxM": 0.244,
-        "noiseStdM": 0.048
+        "noiseStdM": 0.048,
+        "biasSamplesM": [
+          0.0,
+          0.026,
+          0.031,
+          0.034,
+          0.04,
+          0.067,
+          0.1,
+          0.105,
+          0.125,
+          0.186,
+          0.246,
+          0.396
+        ]
       },
       "light": {
         "biasMinM": 0.001,
         "biasMaxM": 0.046,
-        "noiseStdM": 0.038
-      }
+        "noiseStdM": 0.038,
+        "biasSamplesM": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.002,
+          0.002,
+          0.007,
+          0.011,
+          0.039,
+          0.044,
+          0.067
+        ]
+      },
+      "note": "biasSamplesM = UTIL per-recording mean bias (clipped >= 0); the simulator draws one per blocked wall. biasMin/MaxM (old P10-P90 uniform) kept as fallback."
     }
   }
 }

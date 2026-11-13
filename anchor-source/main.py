@@ -33,7 +33,7 @@ _ENGINE_DIR = _PROJECT_ROOT / "location-engine"
 
 for _path in (_HERE, _SHARED_DIR, _ENGINE_DIR):
     _path_str = str(_path)
-    if _path_str not in sys.path:
+        if _path_str not in sys.path:
         sys.path.insert(0, _path_str)
 
 import socketio  # noqa: E402
